@@ -31,7 +31,7 @@ jobs:
           FAILED=0
           for lesson in lessons/**/*.json; do
             echo "Validating $lesson..."
-            if ajv validate -s schemas/lesson.schema.json -d "$lesson" --spec=draft7 2>&1; then
+            if ajv validate -s schemas/lesson.schema.json -d "$lesson" --spec=draft7 -c ajv-formats --strict=false 2>&1; then
               echo "  ✅ PASS"
             else
               echo "  ❌ FAIL"
