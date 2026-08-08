@@ -104,29 +104,29 @@ def verify(lesson_path: Path, stamp: bool, json_out: bool, schema_path: Path | N
                 click.echo(f"    --- STDERR ---\n    {o.stderr.strip()}")
 
     click.echo("")
-        receipt = generate_receipt(report, lesson)
-        if stamp and report.verdict == "pass":
-            now = datetime.now(timezone.utc).isoformat()
-            lesson["lifecycle"]["status"] = "verified"
-            if not lesson["lifecycle"].get("first_verified"):
-                lesson["lifecycle"]["first_verified"] = now
-            lesson["lifecycle"]["last_verified"] = now
+    receipt = generate_receipt(report, lesson)
+    if stamp and report.verdict == "pass":
+        now = datetime.now(timezone.utc).isoformat()
+        lesson["lifecycle"]["status"] = "verified"
+        if not lesson["lifecycle"].get("first_verified"):
+            lesson["lifecycle"]["first_verified"] = now
+        lesson["lifecycle"]["last_verified"] = now
 
-            lesson_path.write_text(json.dumps(lesson, indent=2) + "\n", encoding="utf-8")
-            rpath = save_receipt(receipt, repo_root)
-            if not json_out:
-                click.echo(f"  Stamped {lesson_path} status to 'verified'")
-                click.echo(f"  Saved receipt to {rpath}")
+        lesson_path.write_text(json.dumps(lesson, indent=2) + "\n", encoding="utf-8")
+        rpath = save_receipt(receipt, repo_root)
+        if not json_out:
+            click.echo(f"  Stamped {lesson_path} status to 'verified'")
+            click.echo(f"  Saved receipt to {rpath}")
 
-        if json_out:
-            click.echo(json.dumps(receipt, indent=2))
+    if json_out:
+        click.echo(json.dumps(receipt, indent=2))
 
-        sys.exit(0 if report.verdict == "pass" else 1)
+    if report.verdict == "pass":
+        if not json_out:
+            click.secho(f"🎉 VERDICT: PASS ({report.lesson_id} @ {report.semver})", fg="green", bold=True)
+        sys.exit(0)
     else:
-        if json_out:
-            receipt = generate_receipt(report, lesson)
-            click.echo(json.dumps(receipt, indent=2))
-        else:
+        if not json_out:
             click.secho(f"💥 VERDICT: FAIL ({report.lesson_id} @ {report.semver})", fg="red", bold=True)
         sys.exit(1)
 
