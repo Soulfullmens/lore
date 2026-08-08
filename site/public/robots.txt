@@ -27,5 +27,5 @@ Allow: /
 User-agent: anthropic-ai
 Allow: /
 
-# Sitemap (will be active once site is deployed to lore-commons.dev or GitHub Pages)
-Sitemap: https://lore-commons.dev/sitemap.xml
+# Sitemap
+Sitemap: https://soulfullmens.github.io/lore/sitemap.xml

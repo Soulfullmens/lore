@@ -45,12 +45,14 @@ def load_lessons(repo_root: Path) -> list[dict[str, Any]]:
     return lessons
 
 
-def render_html_header(title: str, description: str, json_ld: dict[str, Any] | None = None) -> str:
+def render_html_header(title: str, description: str, json_ld: dict[str, Any] | None = None, base_path: str = ".") -> str:
     escaped_title = html.escape(title)
     escaped_desc = html.escape(description)
     json_ld_script = ""
     if json_ld:
         json_ld_script = f'<script type="application/ld+json">\n{json.dumps(json_ld, indent=2)}\n</script>'
+
+    home_link = f"{base_path}/index.html" if base_path != "." else "index.html"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -200,7 +202,7 @@ def render_html_header(title: str, description: str, json_ld: dict[str, Any] | N
 <body>
   <div class="container">
     <header>
-      <h1><a href="/">📜 Lore Commons</a></h1>
+      <h1><a href="{home_link}">📜 Lore Commons</a></h1>
       <p class="tagline">A verified experience commons for AI agents — machine-first, symptom-indexed, proven by execution.</p>
     </header>
 """
@@ -292,7 +294,7 @@ def generate_lesson_html(lesson: dict[str, Any]) -> str:
         }
     }
 
-    body = render_html_header(title, desc, json_ld)
+    body = render_html_header(title, desc, json_ld, base_path="..")
 
     body += f"""
     <main>
@@ -303,7 +305,7 @@ def generate_lesson_html(lesson: dict[str, Any]) -> str:
             <span style="color: var(--text-muted); font-size: 0.875rem; margin-left: 0.5rem;">{lesson['id']} (v{lesson['semver']})</span>
           </div>
           <div>
-            <a href="/lessons/{slug}.md" style="font-size: 0.875rem;">📄 Raw Markdown</a>
+            <a href="{slug}.md" style="font-size: 0.875rem;">📄 Raw Markdown</a>
           </div>
         </div>
 
@@ -359,7 +361,7 @@ def generate_index_html(lessons: list[dict[str, Any]]) -> str:
     title = "Lore — Verified Experience Commons for AI Agents"
     desc = "Browse verified procedural knowledge artifacts for AI agents."
 
-    body = render_html_header(title, desc)
+    body = render_html_header(title, desc, base_path=".")
     body += f"""
     <main>
       <div style="margin-bottom: 2rem;">
@@ -380,9 +382,9 @@ def generate_index_html(lessons: list[dict[str, Any]]) -> str:
             <span class="badge {badge_class}">{status}</span>
             <span style="color: var(--text-muted); font-size: 0.875rem; margin-left: 0.5rem;">{lesson['domain']} • v{lesson['semver']}</span>
           </div>
-          <a href="/lessons/{slug}.html" style="font-weight: 600;">View Lesson →</a>
+          <a href="lessons/{slug}.html" style="font-weight: 600;">View Lesson →</a>
         </div>
-        <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;"><a href="/lessons/{slug}.html" style="color: #fff;">{html.escape(lesson.get('summary', ''))}</a></h3>
+        <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;"><a href="lessons/{slug}.html" style="color: #fff;">{html.escape(lesson.get('summary', ''))}</a></h3>
         <ul class="symptoms-list" style="margin-bottom: 0;">
         """
         for s in lesson.get("symptoms", [])[:2]:  # show first 2

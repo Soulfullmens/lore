@@ -15,12 +15,9 @@ from .static_checks import run_static_checks
 from .receipts import generate_receipt, save_receipt
 
 
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+from .console import setup_utf8_console
+
+setup_utf8_console()
 
 
 @click.group()
