@@ -33,14 +33,16 @@ def cli():
 @cli.command()
 @click.argument("lesson_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--stamp/--no-stamp", default=False, help="Update lesson status to 'verified' and save receipt on success.")
+@click.option("--json-out/--no-json", "json_out", default=False, help="Output machine-readable JSON verification report.")
 @click.option("--schema-path", type=click.Path(exists=True, path_type=Path), default=None, help="Path to lesson.schema.json")
-def verify(lesson_path: Path, stamp: bool, schema_path: Path | None):
+def verify(lesson_path: Path, stamp: bool, json_out: bool, schema_path: Path | None):
     """Verify a lesson file: static checks -> Docker build -> negative run -> positive run."""
     repo_root = _find_repo_root(lesson_path)
     if schema_path is None:
         schema_path = repo_root / "schemas" / "lesson.schema.json"
 
-    click.echo(f"📋 Verifying {lesson_path}...")
+    if not json_out:
+        click.echo(f"📋 Verifying {lesson_path}...")
 
     # Step 1: Read JSON
     try:
@@ -102,10 +104,8 @@ def verify(lesson_path: Path, stamp: bool, schema_path: Path | None):
                 click.echo(f"    --- STDERR ---\n    {o.stderr.strip()}")
 
     click.echo("")
-    if report.verdict == "pass":
-        click.secho(f"🎉 VERDICT: PASS ({report.lesson_id} @ {report.semver})", fg="green", bold=True)
-
-        if stamp:
+        receipt = generate_receipt(report, lesson)
+        if stamp and report.verdict == "pass":
             now = datetime.now(timezone.utc).isoformat()
             lesson["lifecycle"]["status"] = "verified"
             if not lesson["lifecycle"].get("first_verified"):
@@ -113,15 +113,21 @@ def verify(lesson_path: Path, stamp: bool, schema_path: Path | None):
             lesson["lifecycle"]["last_verified"] = now
 
             lesson_path.write_text(json.dumps(lesson, indent=2) + "\n", encoding="utf-8")
-            click.echo(f"  Stamped {lesson_path} status to 'verified'")
-
-            receipt = generate_receipt(report, lesson)
             rpath = save_receipt(receipt, repo_root)
-            click.echo(f"  Saved receipt to {rpath}")
+            if not json_out:
+                click.echo(f"  Stamped {lesson_path} status to 'verified'")
+                click.echo(f"  Saved receipt to {rpath}")
 
-        sys.exit(0)
+        if json_out:
+            click.echo(json.dumps(receipt, indent=2))
+
+        sys.exit(0 if report.verdict == "pass" else 1)
     else:
-        click.secho(f"💥 VERDICT: FAIL ({report.lesson_id} @ {report.semver})", fg="red", bold=True)
+        if json_out:
+            receipt = generate_receipt(report, lesson)
+            click.echo(json.dumps(receipt, indent=2))
+        else:
+            click.secho(f"💥 VERDICT: FAIL ({report.lesson_id} @ {report.semver})", fg="red", bold=True)
         sys.exit(1)
 
 
