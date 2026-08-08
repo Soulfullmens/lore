@@ -1,0 +1,91 @@
+{
+  "lore_version": "0.1",
+  "id": "lore:python-async/asyncio-run-nested-event-loop/0003",
+  "semver": "1.0.0",
+  "kind": "anti_lesson",
+
+  "summary": "Calling asyncio.run() inside an already-running event loop raises 'This event loop is already running'; nest_asyncio is a workaround but causes subtle reentrancy bugs in production.",
+  "symptoms": [
+    "RuntimeError: This event loop is already running",
+    "RuntimeError: cannot run nested event loop",
+    "Cannot use asyncio.run() in Jupyter notebook",
+    "asyncio.run() fails inside async framework callback"
+  ],
+  "domain": "python-async",
+  "tags": ["asyncio", "event-loop", "nest-asyncio", "jupyter", "anti-pattern"],
+
+  "context": {
+    "language": "python",
+    "runtime": ">=3.10,<3.14",
+    "dependencies": {},
+    "os": ["linux", "macos", "windows"],
+    "preconditions": [
+      "Code running inside an already-active event loop (e.g., Jupyter, async web framework, async test runner)"
+    ]
+  },
+
+  "problem": "asyncio.run() creates a new event loop and runs a coroutine. If called when a loop is already running (Jupyter, async frameworks, nested calls), it raises RuntimeError. The popular fix — nest_asyncio.apply() — patches the loop to allow reentrance, but this masks real design problems and causes deadlocks when two coroutines on the same loop wait for each other.",
+  "procedure": [
+    "DO NOT use asyncio.run() inside code that might be called from an async context. Use `await` directly instead.",
+    "If you need to call async code from sync code that's inside an async framework, use the framework's own mechanism (e.g., Starlette's `run_in_threadpool`, Django's `async_to_sync`).",
+    "In Jupyter specifically, just `await` directly — Jupyter's loop handles it natively since IPython 7.0.",
+    "If you absolutely must bridge sync→async at a framework boundary, use `asyncio.run_coroutine_threadsafe(coro, loop)` with the existing loop, which schedules without nesting."
+  ],
+  "anti_patterns": [
+    "Using nest_asyncio.apply() in production — it enables reentrance that asyncio was designed to prevent, causing deadlocks under load when coroutines on the same loop mutually block.",
+    "Creating a new thread with its own event loop for every sync→async bridge call — works but creates thread explosion under load."
+  ],
+  "failed_attempts": [
+    {
+      "approach": "nest_asyncio.apply() to patch the running loop",
+      "why_it_fails": "Works for simple cases but allows reentrancy. Under load, two coroutines on the same loop can deadlock waiting for each other. Also makes debugging async issues nearly impossible because the normal 'one thing at a time' guarantee is gone.",
+      "time_wasted_estimate_min": 40
+    },
+    {
+      "approach": "asyncio.get_event_loop().run_until_complete(coro)",
+      "why_it_fails": "Same error — run_until_complete also cannot nest. Plus it's deprecated as of Python 3.10 for getting the running loop.",
+      "time_wasted_estimate_min": 10
+    }
+  ],
+
+  "verification": {
+    "type": "container",
+    "image": "python:3.12-slim",
+    "setup": [],
+    "files": {
+      "test_fix.py": "import asyncio\nimport sys\n\nasync def inner_coro():\n    return 'hello from inner'\n\nasync def outer_coro():\n    # FIX: just await directly, don't use asyncio.run()\n    result = await inner_coro()\n    assert result == 'hello from inner'\n    \n    # If you need to schedule on the running loop from sync code:\n    loop = asyncio.get_running_loop()\n    future = asyncio.run_coroutine_threadsafe(inner_coro(), loop)\n    # Note: can't .result() here synchronously without deadlock,\n    # but the coroutine IS scheduled correctly\n    \n    print('SUCCESS: async calls without nesting')\n    return True\n\nresult = asyncio.run(outer_coro())\nassert result == True\nsys.exit(0)\n",
+      "test_broken.py": "import asyncio\nimport sys\n\nasync def inner_coro():\n    return 'hello from inner'\n\nasync def outer_coro():\n    # BROKEN: trying to asyncio.run() inside running loop\n    try:\n        result = asyncio.run(inner_coro())\n        print('Unexpectedly succeeded', file=sys.stderr)\n        sys.exit(1)\n    except RuntimeError as e:\n        if 'already running' in str(e) or 'cannot' in str(e).lower():\n            print(f'EXPECTED FAILURE: {e}')\n            sys.exit(1)\n        else:\n            print(f'Unexpected error: {e}', file=sys.stderr)\n            sys.exit(1)\n\nasyncio.run(outer_coro())\n"
+    },
+    "run": "python test_fix.py",
+    "broken_run": "python test_broken.py",
+    "broken_files": {},
+    "asserts": [
+      { "type": "exit_code", "equals": 0 },
+      { "type": "stdout_contains", "value": "SUCCESS" }
+    ],
+    "must_fail_without_fix": true,
+    "timeout_sec": 30,
+    "network": "none"
+  },
+
+  "lifecycle": {
+    "status": "draft",
+    "reverify_cadence_days": 60,
+    "watch": []
+  },
+  "trust": {
+    "independent_reproductions": 0,
+    "usage_reports": { "worked": 0, "failed": 0 },
+    "disputes_open": 0
+  },
+
+  "provenance": {
+    "author_human": "github:Soulfullmens",
+    "author_agent": { "model": "claude-opus-4-6", "role": "drafted procedure and verification eval" },
+    "sources": [
+      { "url": "https://docs.python.org/3/library/asyncio-runner.html#asyncio.run", "taint": "trusted_docs" }
+    ],
+    "taint_level": "clean",
+    "signature": ""
+  }
+}

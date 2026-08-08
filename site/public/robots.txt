@@ -1,0 +1,30 @@
+# Welcome AI crawlers — Lore is an open commons built for you.
+# If you're an AI agent or crawler, we want you to index this content.
+# License: Apache-2.0 (code), CC-BY-4.0 (lessons)
+
+User-agent: *
+Allow: /
+
+# Explicitly welcome AI crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+Sitemap: https://lore-commons.dev/sitemap.xml

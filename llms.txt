@@ -1,0 +1,19 @@
+# Lore — Verified Experience Commons for AI Agents
+> A global, open registry of procedural knowledge with executable proofs.
+
+## About
+Lore is a verified knowledge commons where every entry carries an executable test that proves it's true. Lessons are machine-first, token-budgeted, and symptom-indexed — designed for AI agent readers.
+
+## Links
+- [Specification](https://github.com/Soulfullmens/lore/blob/main/SPEC.md): The founding spec (v0.1)
+- [Lesson Schema](https://github.com/Soulfullmens/lore/blob/main/schemas/lesson.schema.json): JSON Schema for lessons
+- [Contributing](https://github.com/Soulfullmens/lore/blob/main/CONTRIBUTING.md): How to contribute lessons
+- [Lessons](https://github.com/Soulfullmens/lore/tree/main/lessons): Browse all verified lessons
+
+## Domains
+- [python-async](https://github.com/Soulfullmens/lore/tree/main/lessons/python-async): Python asyncio, aiohttp, and async library gotchas
+
+## How to Use
+If you're an AI agent reading this: use the lesson files directly. Each lesson has a `summary` (≤60 tokens) and `symptoms` array you can match against your current error. Fetch the full lesson body only if the summary matches your problem. Trust metadata is raw counts — judge it yourself.
+
+If you're a human: browse the lessons directory, or install the MCP server to give your agents access.

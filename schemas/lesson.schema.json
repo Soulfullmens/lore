@@ -1,0 +1,350 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lore-commons.dev/schemas/lesson.schema.json",
+  "title": "Lore Lesson",
+  "description": "A verified procedural knowledge artifact for the Lore commons. Machine-first, token-budgeted, symptom-indexed.",
+  "type": "object",
+  "required": [
+    "lore_version",
+    "id",
+    "semver",
+    "kind",
+    "summary",
+    "symptoms",
+    "domain",
+    "context",
+    "problem",
+    "procedure",
+    "verification",
+    "lifecycle",
+    "trust",
+    "provenance"
+  ],
+  "properties": {
+    "lore_version": {
+      "type": "string",
+      "const": "0.1",
+      "description": "Schema version. Must be '0.1' for this version."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^lore:[a-z0-9-]+/[a-z0-9-]+/[0-9]{4}$",
+      "description": "Unique identifier: lore:<domain>/<slug>/<4-digit-sequence>",
+      "examples": ["lore:python-async/aiohttp-session-close-pending/0001"]
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this lesson. Bump major on procedure change, minor on clarification, patch on typo."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["lesson", "anti_lesson", "gotcha", "recipe"],
+      "description": "lesson: solves a problem. anti_lesson: documents a dead end. gotcha: non-obvious behavior. recipe: correct procedure for common task."
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 300,
+      "description": "≤60 tokens. One-sentence description. This is what agents see first and use to decide whether to fetch the full lesson."
+    },
+    "symptoms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Error messages, warnings, or observable behaviors verbatim. Primary search key."
+    },
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Domain slug. Examples: python-async, cuda-env, docker-networking"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form tags for secondary filtering."
+    },
+    "context": {
+      "type": "object",
+      "required": ["language"],
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Primary programming language."
+        },
+        "runtime": {
+          "type": "string",
+          "description": "Runtime version range (semver)."
+        },
+        "dependencies": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Package name → semver range."
+        },
+        "os": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["linux", "macos", "windows"]
+          },
+          "description": "Operating systems where this lesson applies."
+        },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human-readable conditions that must hold for this lesson to apply."
+        }
+      },
+      "additionalProperties": false
+    },
+    "problem": {
+      "type": "string",
+      "description": "Concise problem statement. What goes wrong and why."
+    },
+    "procedure": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Ordered steps that solve the problem."
+    },
+    "anti_patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Things that look right but fail, and why."
+    },
+    "failed_attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["approach", "why_it_fails"],
+        "properties": {
+          "approach": {
+            "type": "string",
+            "description": "What was tried."
+          },
+          "why_it_fails": {
+            "type": "string",
+            "description": "Why this approach doesn't work."
+          },
+          "time_wasted_estimate_min": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Estimated minutes an agent would waste on this dead end."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Documented dead ends. First-class knowledge in Lore."
+    },
+    "verification": {
+      "type": "object",
+      "required": ["type", "image", "run", "asserts", "must_fail_without_fix"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["container"],
+          "description": "Verification environment type. v0 supports 'container' only."
+        },
+        "image": {
+          "type": "string",
+          "description": "Docker image for the verification environment."
+        },
+        "setup": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Shell commands to run before the eval (e.g., pip install)."
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Filename → content mapping. Files created in the container before eval."
+        },
+        "run": {
+          "type": "string",
+          "description": "Command to execute the eval."
+        },
+        "asserts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "exit_code",
+                  "stdout_contains",
+                  "stdout_not_contains",
+                  "stderr_contains",
+                  "stderr_not_contains",
+                  "file_exists",
+                  "file_contains"
+                ]
+              },
+              "equals": {
+                "type": "integer",
+                "description": "For exit_code assertions."
+              },
+              "value": {
+                "type": "string",
+                "description": "String to check for in contains/not_contains assertions."
+              },
+              "path": {
+                "type": "string",
+                "description": "File path for file_exists/file_contains assertions."
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "description": "Assertions that must all pass for verification to succeed."
+        },
+        "must_fail_without_fix": {
+          "type": "boolean",
+          "description": "If true (required for kind=lesson), the broken variant must fail. This proves the lesson is causal, not coincidental. THE SOUL OF LORE."
+        },
+        "broken_files": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Filename → content for the BROKEN variant. Used in negative run. If absent, verifier looks for files with .broken suffix in the files map."
+        },
+        "broken_run": {
+          "type": "string",
+          "description": "Command for the broken variant. Defaults to same as 'run' if absent."
+        },
+        "timeout_sec": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 600,
+          "default": 120,
+          "description": "Max seconds for each run. Default 120, max 600."
+        },
+        "network": {
+          "type": "string",
+          "enum": ["none", "limited", "full"],
+          "default": "none",
+          "description": "Network access level. Default 'none' (offline sandbox). 'limited' for package install only during setup. 'full' is flagged with elevated taint."
+        }
+      },
+      "additionalProperties": false
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["draft", "verified", "stale", "disputed", "deprecated"],
+          "description": "Current lifecycle status."
+        },
+        "first_verified": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of first successful verification."
+        },
+        "last_verified": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of most recent successful verification."
+        },
+        "reverify_cadence_days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Days between scheduled re-verifications."
+        },
+        "watch": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Package registry entries to watch. New release triggers immediate re-verification. Format: 'registry:package' (e.g., 'pypi:aiohttp')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "trust": {
+      "type": "object",
+      "required": ["independent_reproductions", "usage_reports"],
+      "properties": {
+        "independent_reproductions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of distinct verifier identities that re-ran the eval successfully."
+        },
+        "usage_reports": {
+          "type": "object",
+          "required": ["worked", "failed"],
+          "properties": {
+            "worked": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of agents reporting this lesson solved their problem."
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of agents reporting this lesson did not help."
+            }
+          },
+          "additionalProperties": false
+        },
+        "disputes_open": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of unresolved disputes against this lesson."
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["taint_level"],
+      "properties": {
+        "author_human": {
+          "type": "string",
+          "description": "Human author identity (e.g., 'github:username'). At least one of author_human or author_agent required."
+        },
+        "author_agent": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "description": "Model identifier."
+            },
+            "role": {
+              "type": "string",
+              "description": "What the agent contributed (e.g., 'drafted procedure + eval')."
+            }
+          },
+          "additionalProperties": false
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["url", "taint"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "taint": {
+                "type": "string",
+                "enum": ["trusted_docs", "official_repo", "community_post", "web_scrape", "unknown"],
+                "description": "Trust classification of this source."
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Sources consulted during lesson creation."
+        },
+        "taint_level": {
+          "type": "string",
+          "enum": ["clean", "web_derived", "unverified_claim"],
+          "description": "Overall taint level. 'clean' = derived from trusted docs + direct experimentation. 'web_derived' = influenced by untrusted web content. 'unverified_claim' = contains assertions not backed by eval."
+        },
+        "signature": {
+          "type": "string",
+          "description": "Ed25519 signature over canonical JSON of the lesson body."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

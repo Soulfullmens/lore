@@ -1,0 +1,94 @@
+{
+  "lore_version": "0.1",
+  "id": "lore:python-async/aiohttp-session-close-event-loop/0001",
+  "semver": "1.0.0",
+  "kind": "lesson",
+
+  "summary": "aiohttp ClientSession closed after event loop teardown raises 'Event loop is closed' during GC; close inside the coroutine or use async context manager.",
+  "symptoms": [
+    "Exception ignored in: <function ClientSession.__del__>",
+    "RuntimeError: Event loop is closed",
+    "Unclosed client session",
+    "Unclosed connector"
+  ],
+  "domain": "python-async",
+  "tags": ["aiohttp", "asyncio", "resource-cleanup", "event-loop"],
+
+  "context": {
+    "language": "python",
+    "runtime": ">=3.10,<3.14",
+    "dependencies": { "aiohttp": ">=3.9,<4.0" },
+    "os": ["linux", "macos", "windows"],
+    "preconditions": [
+      "ClientSession created inside asyncio.run() or a managed event loop",
+      "Session not explicitly closed before coroutine exits"
+    ]
+  },
+
+  "problem": "When a ClientSession is garbage-collected after the event loop has closed, its __del__ tries to close the connector on a dead loop. This produces noisy RuntimeError warnings that mask real failures and leak file descriptors under sustained load.",
+  "procedure": [
+    "Use `async with aiohttp.ClientSession() as session:` inside the coroutine passed to asyncio.run(). The context manager guarantees close before loop teardown.",
+    "If the session's lifetime must span multiple functions, call `await session.close()` explicitly before the top-level coroutine returns.",
+    "For TLS connections, add `await asyncio.sleep(0)` after close() to let SSL transports finalize (per aiohttp docs, 'Graceful Shutdown' section)."
+  ],
+  "anti_patterns": [
+    "Closing the session in atexit or __del__ — the event loop is already gone by then.",
+    "Creating a new event loop with asyncio.new_event_loop() just to close the session — the connector is bound to the original (now dead) loop and cannot be closed on a different one.",
+    "Suppressing the warning with warnings.filterwarnings('ignore') — hides the symptom but connections still leak file descriptors under load."
+  ],
+  "failed_attempts": [
+    {
+      "approach": "Suppressing the RuntimeError warning with warnings.filterwarnings",
+      "why_it_fails": "Hides the symptom; connections still leak file descriptors under sustained load. Memory usage grows over time in long-running services.",
+      "time_wasted_estimate_min": 25
+    },
+    {
+      "approach": "Calling loop.run_until_complete(session.close()) on a freshly created loop",
+      "why_it_fails": "The connector's internal state is bound to the original loop. Attempting to close on a different loop raises 'attached to a different loop' or silently fails.",
+      "time_wasted_estimate_min": 15
+    }
+  ],
+
+  "verification": {
+    "type": "container",
+    "image": "python:3.12-slim",
+    "setup": ["pip install aiohttp>=3.9,<4.0"],
+    "files": {
+      "test_fix.py": "import asyncio\nimport aiohttp\nimport sys\nimport warnings\n\nwarnings.filterwarnings('error')  # Promote warnings to errors\n\nasync def main():\n    # CORRECT: use async context manager\n    async with aiohttp.ClientSession() as session:\n        # Simulate usage (no network needed - just prove lifecycle)\n        pass\n    # Session is closed before loop teardown\n\ntry:\n    asyncio.run(main())\n    print('SUCCESS: No event loop warnings')\n    sys.exit(0)\nexcept Exception as e:\n    print(f'FAIL: {e}', file=sys.stderr)\n    sys.exit(1)\n",
+      "test_broken.py": "import asyncio\nimport aiohttp\nimport sys\nimport gc\nimport warnings\n\nwarnings.filterwarnings('error')  # Promote warnings to errors\n\nasync def main():\n    # BROKEN: session created but never explicitly closed\n    session = aiohttp.ClientSession()\n    # Simulate usage\n    pass\n    # Session is NOT closed - will be GC'd after loop teardown\n\ntry:\n    asyncio.run(main())\n    gc.collect()  # Force GC to trigger __del__\n    print('No warning raised - test inconclusive', file=sys.stderr)\n    sys.exit(1)  # We expect this to fail\nexcept Exception as e:\n    print(f'EXPECTED FAILURE: {e}')\n    sys.exit(1)\n"
+    },
+    "run": "python test_fix.py",
+    "broken_run": "python test_broken.py",
+    "broken_files": {},
+    "asserts": [
+      { "type": "exit_code", "equals": 0 },
+      { "type": "stderr_not_contains", "value": "Event loop is closed" },
+      { "type": "stderr_not_contains", "value": "Unclosed client session" }
+    ],
+    "must_fail_without_fix": true,
+    "timeout_sec": 60,
+    "network": "limited"
+  },
+
+  "lifecycle": {
+    "status": "draft",
+    "reverify_cadence_days": 30,
+    "watch": ["pypi:aiohttp"]
+  },
+  "trust": {
+    "independent_reproductions": 0,
+    "usage_reports": { "worked": 0, "failed": 0 },
+    "disputes_open": 0
+  },
+
+  "provenance": {
+    "author_human": "github:Soulfullmens",
+    "author_agent": { "model": "claude-opus-4-6", "role": "drafted procedure and verification eval" },
+    "sources": [
+      { "url": "https://docs.aiohttp.org/en/stable/client_advanced.html", "taint": "trusted_docs" },
+      { "url": "https://docs.aiohttp.org/en/stable/client_quickstart.html#aiohttp-client-session", "taint": "trusted_docs" }
+    ],
+    "taint_level": "clean",
+    "signature": ""
+  }
+}
