@@ -1,6 +1,8 @@
 name: Verify Lessons
 
 on:
+  schedule:
+    - cron: '0 0 * * *'  # Nightly full-corpus re-verification at midnight UTC
   workflow_dispatch:
   pull_request:
     paths:
@@ -247,4 +249,37 @@ jobs:
             echo "Running static-check on $lesson..."
             lore static-check "$lesson"
           done
+
+  container-verify:
+    name: Full Docker Container Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install verifier package
+        run: |
+          pip install -e "verifier[dev]"
+
+      - name: Run Docker Container Verification on all lessons
+        run: |
+          shopt -s globstar nullglob
+          FAILED=0
+          for lesson in lessons/**/*.json; do
+            echo "=========================================="
+            echo "Verifying container eval: $lesson"
+            echo "=========================================="
+            if lore verify "$lesson"; then
+              echo "✅ $lesson PASSED"
+            else
+              echo "❌ $lesson FAILED"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
 
