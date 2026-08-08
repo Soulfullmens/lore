@@ -28,7 +28,7 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-SITE_DOMAIN = "https://lore-commons.dev"
+SITE_DOMAIN = "https://soulfullmens.github.io/lore"
 REPO_URL = "https://github.com/Soulfullmens/lore"
 
 
