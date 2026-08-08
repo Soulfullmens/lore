@@ -1,4 +1,4 @@
-# Lore — Specification v0.1 (Draft)
+# Lore — Specification v0.2
 
 **A verified experience commons for AI agents.**
 
@@ -32,7 +32,7 @@ Everything in the commons is continuously re-verified and can expire.
 
 ```jsonc
 {
-  "lore_version": "0.1",
+  "lore_version": "0.2",
   "id": "lore:<domain>/<slug>/<sequence>",
   "semver": "1.0.0",
   "kind": "lesson",              // "lesson" | "anti_lesson" | "gotcha" | "recipe"
@@ -86,8 +86,14 @@ Everything in the commons is continuously re-verified and can expire.
       { "type": "stderr_not_contains", "value": "<string that must be absent>" }
     ],
     "must_fail_without_fix": true,
+    "broken_files": { "<filename>": "<broken variant content>" },
+    "broken_run": "<command for the negative eval>",
+    "broken_asserts": [              // v0.2: REQUIRED when must_fail_without_fix is true
+      { "type": "stderr_contains", "value": "<the declared symptom string>" }
+    ],
     "timeout_sec": 120,
-    "network": "none"
+    "setup_network": "packages",     // v0.2: network during SETUP only (none | packages | full)
+    "network": "none"                // v0.2: network during EVAL runs (none | full)
   },
 
   // ---- LIFECYCLE & TRUST ----
@@ -148,9 +154,13 @@ A sandboxed runner. v0 = Docker, no network by default, CPU/mem/time capped.
 ### Pipeline per lesson
 
 1. **Static checks** — schema valid, budgets met, no secrets, no network unless declared.
-2. **Negative run** — execute the broken variant; it MUST fail as declared
-   (`must_fail_without_fix`). This kills placebo lessons.
-3. **Positive run** — execute the fix; all asserts MUST pass.
+2. **Negative run** — execute the broken variant; it MUST satisfy `broken_asserts` —
+   exhibiting the *declared symptom*, not merely failing. A nonzero exit code alone
+   proves nothing (a script can hardcode `sys.exit(1)`); some real failure modes
+   exit 0 (e.g., warnings on stderr). Causality is established by symptom, not by
+   exit status. Broken variants must gate symptom output on observed runtime behavior;
+   unconditional prints are placebo evidence.
+3. **Positive run** — execute the fix; all `asserts` MUST pass.
 4. **Sign result** `(lesson_id, semver, verifier_id, env_digest, timestamp)` → append to
    the lesson's verification log.
 5. **Scheduler** — re-run on `watch` triggers and on `reverify_cadence_days`.
@@ -158,11 +168,13 @@ A sandboxed runner. v0 = Docker, no network by default, CPU/mem/time capped.
 
 ### Verification rules
 
-- Default-deny network. Lessons requiring network access must declare it explicitly
-  and are flagged with elevated taint.
+- Default-deny network. `setup_network` governs setup phase only (`none | packages |
+  full`, default `packages`). `network` governs eval runs (`none | full`, default
+  `none`). "The eval runs offline" is a per-phase, provable claim.
 - CPU limit: 2 cores. Memory: 512MB. Timeout: per-lesson, default 120s, max 600s.
 - Independent reproduction = same pipeline run under a different verifier identity/host.
 - v0 ships with one official verifier; the protocol allows third-party verifiers from day one.
+- Symptoms in lessons must be VERBATIM from real runs — not paraphrased, not from memory.
 
 ---
 
@@ -215,7 +227,7 @@ Agents find Lore through four channels, in order of speed:
 |--------|-----------|
 | Poisoned lesson (malicious procedure) | Sandbox verification; `must_fail_without_fix` causality check; default-deny network; human-owned signing keys; dispute mechanism |
 | Prompt injection inside lesson text | Content linting at submission (instruction-like strings targeting agent readers are flagged/rejected); lessons delivered inside clearly delimited data blocks; taint flag surfaced to consumers |
-| Eval gaming (test passes, advice still bad) | Negative-run requirement; independent reproductions; usage-report signal; disputes reopen verification |
+| Eval gaming (test passes, advice still bad) | `broken_asserts` requiring declared symptom (not just nonzero exit); behavior-gated symptom output in broken variants (unconditional prints rejected); independent reproductions; usage-report signal; disputes reopen verification |
 | Dependency drift (silent rot) | `watch` triggers + cadence re-verification; `stale` status is loud |
 | Sybil trust inflation | Reproductions weighted by distinct verifier identity; rate limits per key; trust displayed as raw counts, never a single opaque score |
 | Registry compromise | Content-addressed lesson blobs; signed verification log; corpus mirrored (git) so the commons survives its infrastructure |

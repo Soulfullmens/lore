@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://lore-commons.dev/schemas/lesson.schema.json",
   "title": "Lore Lesson",
-  "description": "A verified procedural knowledge artifact for the Lore commons. Machine-first, token-budgeted, symptom-indexed.",
+  "description": "A verified procedural knowledge artifact for the Lore commons. Machine-first, token-budgeted, symptom-indexed. v0.2: negative runs must fail for the declared reason (broken_asserts), not merely fail.",
   "type": "object",
   "required": [
     "lore_version",
@@ -23,19 +23,19 @@
   "properties": {
     "lore_version": {
       "type": "string",
-      "const": "0.1",
-      "description": "Schema version. Must be '0.1' for this version."
+      "const": "0.2",
+      "description": "Schema version. Must be '0.2' for this version."
     },
     "id": {
       "type": "string",
       "pattern": "^lore:[a-z0-9-]+/[a-z0-9-]+/[0-9]{4}$",
       "description": "Unique identifier: lore:<domain>/<slug>/<4-digit-sequence>",
-      "examples": ["lore:python-async/aiohttp-session-close-pending/0001"]
+      "examples": ["lore:python-async/aiohttp-session-close-event-loop/0001"]
     },
     "semver": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Semantic version of this lesson. Bump major on procedure change, minor on clarification, patch on typo."
+      "description": "Semantic version of this lesson. Bump MAJOR when the procedure or core claim changes, MINOR on clarification, PATCH on typo."
     },
     "kind": {
       "type": "string",
@@ -45,18 +45,18 @@
     "summary": {
       "type": "string",
       "maxLength": 300,
-      "description": "≤60 tokens. One-sentence description. This is what agents see first and use to decide whether to fetch the full lesson."
+      "description": "One sentence, <=60 tokens. What agents see first to decide whether to fetch the full lesson."
     },
     "symptoms": {
       "type": "array",
       "items": { "type": "string" },
       "minItems": 1,
-      "description": "Error messages, warnings, or observable behaviors verbatim. Primary search key."
+      "description": "Error messages, warnings, or observable behaviors VERBATIM from real runs. Primary search key. Do not paraphrase; do not include messages the current runtime no longer emits without noting the version."
     },
     "domain": {
       "type": "string",
       "pattern": "^[a-z0-9-]+$",
-      "description": "Domain slug. Examples: python-async, cuda-env, docker-networking"
+      "description": "Domain slug. Examples: python-async, python-packaging, docker-env"
     },
     "tags": {
       "type": "array",
@@ -67,25 +67,16 @@
       "type": "object",
       "required": ["language"],
       "properties": {
-        "language": {
-          "type": "string",
-          "description": "Primary programming language."
-        },
-        "runtime": {
-          "type": "string",
-          "description": "Runtime version range (semver)."
-        },
+        "language": { "type": "string", "description": "Primary programming language." },
+        "runtime": { "type": "string", "description": "Runtime version range (semver)." },
         "dependencies": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Package name → semver range."
+          "description": "Package name -> semver range."
         },
         "os": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["linux", "macos", "windows"]
-          },
+          "items": { "type": "string", "enum": ["linux", "macos", "windows"] },
           "description": "Operating systems where this lesson applies."
         },
         "preconditions": {
@@ -109,7 +100,7 @@
     "anti_patterns": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Things that look right but fail, and why."
+      "description": "Things that look right but fail, and why. Widely believed myths about the behavior belong here, labeled as myths."
     },
     "failed_attempts": {
       "type": "array",
@@ -117,14 +108,8 @@
         "type": "object",
         "required": ["approach", "why_it_fails"],
         "properties": {
-          "approach": {
-            "type": "string",
-            "description": "What was tried."
-          },
-          "why_it_fails": {
-            "type": "string",
-            "description": "Why this approach doesn't work."
-          },
+          "approach": { "type": "string", "description": "What was tried." },
+          "why_it_fails": { "type": "string", "description": "Why this approach doesn't work." },
           "time_wasted_estimate_min": {
             "type": "integer",
             "minimum": 0,
@@ -144,72 +129,42 @@
           "enum": ["container"],
           "description": "Verification environment type. v0 supports 'container' only."
         },
-        "image": {
-          "type": "string",
-          "description": "Docker image for the verification environment."
-        },
+        "image": { "type": "string", "description": "Docker image for the verification environment." },
         "setup": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Shell commands to run before the eval (e.g., pip install)."
+          "description": "Shell commands run before the evals (e.g., pip install). Network access during setup is governed by setup_network."
         },
         "files": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Filename → content mapping. Files created in the container before eval."
+          "description": "Filename -> content. Files created in the container before the POSITIVE run."
         },
-        "run": {
-          "type": "string",
-          "description": "Command to execute the eval."
-        },
+        "run": { "type": "string", "description": "Command executing the POSITIVE eval (the fix)." },
         "asserts": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "exit_code",
-                  "stdout_contains",
-                  "stdout_not_contains",
-                  "stderr_contains",
-                  "stderr_not_contains",
-                  "file_exists",
-                  "file_contains"
-                ]
-              },
-              "equals": {
-                "type": "integer",
-                "description": "For exit_code assertions."
-              },
-              "value": {
-                "type": "string",
-                "description": "String to check for in contains/not_contains assertions."
-              },
-              "path": {
-                "type": "string",
-                "description": "File path for file_exists/file_contains assertions."
-              }
-            },
-            "additionalProperties": false
-          },
+          "items": { "$ref": "#/definitions/assertion" },
           "minItems": 1,
-          "description": "Assertions that must all pass for verification to succeed."
+          "description": "Assertions that must ALL pass on the positive run."
         },
         "must_fail_without_fix": {
           "type": "boolean",
-          "description": "If true (required for kind=lesson), the broken variant must fail. This proves the lesson is causal, not coincidental. THE SOUL OF LORE."
+          "description": "If true (required true for kind=lesson), the negative run must satisfy broken_asserts — i.e., exhibit the DECLARED symptom. v0.2 semantics: a nonzero exit code alone proves nothing (a script can hardcode failure), and some real failure modes exit 0 (e.g., warnings on stderr). Causality is established by symptom, not by exit status. THE SOUL OF LORE."
         },
         "broken_files": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Filename → content for the BROKEN variant. Used in negative run. If absent, verifier looks for files with .broken suffix in the files map."
+          "description": "Filename -> content for the BROKEN variant, used in the negative run. Symptom output in broken variants MUST be gated on observed runtime behavior (assert the behavior occurred before printing the symptom); unconditional prints are placebo evidence and will be rejected in review."
         },
         "broken_run": {
           "type": "string",
-          "description": "Command for the broken variant. Defaults to same as 'run' if absent."
+          "description": "Command for the negative eval. Defaults to 'run' if absent."
+        },
+        "broken_asserts": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/assertion" },
+          "minItems": 1,
+          "description": "Assertions that must ALL pass on the NEGATIVE run — they describe how the broken variant fails (typically stderr_contains the symptom). Required when must_fail_without_fix is true."
         },
         "timeout_sec": {
           "type": "integer",
@@ -218,12 +173,24 @@
           "default": 120,
           "description": "Max seconds for each run. Default 120, max 600."
         },
+        "setup_network": {
+          "type": "string",
+          "enum": ["none", "packages", "full"],
+          "default": "packages",
+          "description": "Network access during SETUP only. 'packages' allows package-index access (pip/npm). 'full' is flagged with elevated taint."
+        },
         "network": {
           "type": "string",
-          "enum": ["none", "limited", "full"],
+          "enum": ["none", "full"],
           "default": "none",
-          "description": "Network access level. Default 'none' (offline sandbox). 'limited' for package install only during setup. 'full' is flagged with elevated taint."
+          "description": "Network access during the EVAL runs. Default 'none' (offline sandbox) — keep it that way unless the lesson is specifically about network behavior. 'full' is flagged with elevated taint."
         }
+      },
+      "if": {
+        "properties": { "must_fail_without_fix": { "const": true } }
+      },
+      "then": {
+        "required": ["type", "image", "run", "asserts", "must_fail_without_fix", "broken_asserts"]
       },
       "additionalProperties": false
     },
@@ -236,26 +203,13 @@
           "enum": ["draft", "verified", "stale", "disputed", "deprecated"],
           "description": "Current lifecycle status."
         },
-        "first_verified": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp of first successful verification."
-        },
-        "last_verified": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp of most recent successful verification."
-        },
-        "reverify_cadence_days": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 30,
-          "description": "Days between scheduled re-verifications."
-        },
+        "first_verified": { "type": "string", "format": "date-time" },
+        "last_verified": { "type": "string", "format": "date-time" },
+        "reverify_cadence_days": { "type": "integer", "minimum": 1, "default": 30 },
         "watch": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Package registry entries to watch. New release triggers immediate re-verification. Format: 'registry:package' (e.g., 'pypi:aiohttp')."
+          "description": "Package registry entries to watch. Format: 'registry:package' (e.g., 'pypi:aiohttp'). New release triggers immediate re-verification."
         }
       },
       "additionalProperties": false
@@ -264,33 +218,17 @@
       "type": "object",
       "required": ["independent_reproductions", "usage_reports"],
       "properties": {
-        "independent_reproductions": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Count of distinct verifier identities that re-ran the eval successfully."
-        },
+        "independent_reproductions": { "type": "integer", "minimum": 0 },
         "usage_reports": {
           "type": "object",
           "required": ["worked", "failed"],
           "properties": {
-            "worked": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Count of agents reporting this lesson solved their problem."
-            },
-            "failed": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Count of agents reporting this lesson did not help."
-            }
+            "worked": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": false
         },
-        "disputes_open": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Number of unresolved disputes against this lesson."
-        }
+        "disputes_open": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     },
@@ -298,21 +236,12 @@
       "type": "object",
       "required": ["taint_level"],
       "properties": {
-        "author_human": {
-          "type": "string",
-          "description": "Human author identity (e.g., 'github:username'). At least one of author_human or author_agent required."
-        },
+        "author_human": { "type": "string", "description": "Human author identity (e.g., 'github:username')." },
         "author_agent": {
           "type": "object",
           "properties": {
-            "model": {
-              "type": "string",
-              "description": "Model identifier."
-            },
-            "role": {
-              "type": "string",
-              "description": "What the agent contributed (e.g., 'drafted procedure + eval')."
-            }
+            "model": { "type": "string" },
+            "role": { "type": "string" }
           },
           "additionalProperties": false
         },
@@ -325,23 +254,42 @@
               "url": { "type": "string", "format": "uri" },
               "taint": {
                 "type": "string",
-                "enum": ["trusted_docs", "official_repo", "community_post", "web_scrape", "unknown"],
-                "description": "Trust classification of this source."
+                "enum": ["trusted_docs", "official_repo", "community_post", "web_scrape", "unknown"]
               }
             },
             "additionalProperties": false
-          },
-          "description": "Sources consulted during lesson creation."
+          }
         },
         "taint_level": {
           "type": "string",
           "enum": ["clean", "web_derived", "unverified_claim"],
-          "description": "Overall taint level. 'clean' = derived from trusted docs + direct experimentation. 'web_derived' = influenced by untrusted web content. 'unverified_claim' = contains assertions not backed by eval."
+          "description": "'clean' = trusted docs + direct experimentation. 'web_derived' = influenced by untrusted web content. 'unverified_claim' = contains assertions not backed by eval."
         },
-        "signature": {
+        "signature": { "type": "string", "description": "Ed25519 signature over canonical JSON of the lesson body." }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "assertion": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
           "type": "string",
-          "description": "Ed25519 signature over canonical JSON of the lesson body."
-        }
+          "enum": [
+            "exit_code",
+            "stdout_contains",
+            "stdout_not_contains",
+            "stderr_contains",
+            "stderr_not_contains",
+            "file_exists",
+            "file_contains"
+          ]
+        },
+        "equals": { "type": "integer", "description": "For exit_code assertions." },
+        "value": { "type": "string", "description": "String for contains/not_contains assertions." },
+        "path": { "type": "string", "description": "File path for file_exists/file_contains assertions." }
       },
       "additionalProperties": false
     }

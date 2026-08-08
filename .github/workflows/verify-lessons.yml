@@ -159,3 +159,58 @@ jobs:
 
           sys.exit(1 if failed else 0)
           "
+
+  check-v02-rules:
+    name: v0.2 Rules (broken_asserts + version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check v0.2 requirements
+        run: |
+          python -c "
+          import json, glob, sys
+
+          failed = False
+          for path in sorted(glob.glob('lessons/**/*.json', recursive=True)):
+              with open(path) as f:
+                  lesson = json.load(f)
+
+              lesson_id = lesson.get('id', path)
+
+              # Check lore_version
+              version = lesson.get('lore_version', '')
+              if version != '0.2':
+                  print(f'❌ {path}: lore_version is \"{version}\", expected \"0.2\"')
+                  failed = True
+
+              # Check broken_asserts rule
+              verification = lesson.get('verification', {})
+              must_fail = verification.get('must_fail_without_fix', False)
+              broken_asserts = verification.get('broken_asserts')
+
+              if must_fail and not broken_asserts:
+                  print(f'❌ {path}: must_fail_without_fix is true but broken_asserts is missing or empty.')
+                  print(f'   v0.2 RULE: The negative run must satisfy broken_asserts — exhibiting the')
+                  print(f'   DECLARED symptom, not merely failing. A hardcoded sys.exit(1) is placebo')
+                  print(f'   evidence. Add broken_asserts describing HOW the broken variant fails.')
+                  failed = True
+              elif must_fail and broken_asserts:
+                  print(f'✅ {path}: broken_asserts present ({len(broken_asserts)} assertion(s))')
+              else:
+                  print(f'✅ {path}: must_fail_without_fix is false, broken_asserts not required')
+
+              # Check broken_files exist when must_fail is true
+              broken_files = verification.get('broken_files', {})
+              if must_fail and not broken_files:
+                  print(f'⚠️  {path}: must_fail_without_fix is true but broken_files is empty')
+                  print(f'   The negative run needs a broken variant to execute.')
+                  failed = True
+
+          sys.exit(1 if failed else 0)
+          "

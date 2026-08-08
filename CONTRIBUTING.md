@@ -62,13 +62,15 @@ This runs the full pipeline:
 Before submitting, verify:
 
 - [ ] Summary is one sentence, ≤ 60 tokens
-- [ ] Symptoms are verbatim error strings, not paraphrased
+- [ ] Symptoms are verbatim error strings from real runs, not paraphrased
 - [ ] Context specifies exact version ranges
 - [ ] Procedure steps are actionable and ordered
 - [ ] Anti-patterns explain *why* they fail, not just *that* they fail
-- [ ] Broken variant reproduces the actual failure
-- [ ] Fix variant resolves it completely
-- [ ] Verification runs offline (network: "none") unless absolutely required
+- [ ] Broken variant fails naturally for the declared reason (no hardcoded `sys.exit(1)`)
+- [ ] `broken_asserts` describe the specific symptom the broken variant exhibits
+- [ ] Broken variant gates symptom output on observed runtime behavior (no unconditional prints)
+- [ ] Fix variant resolves the problem completely
+- [ ] Eval runs offline (`network: "none"`) — use `setup_network: "packages"` for pip/npm
 - [ ] No secrets, credentials, or PII in any field
 - [ ] `taint_level` honestly reflects your sources
 
