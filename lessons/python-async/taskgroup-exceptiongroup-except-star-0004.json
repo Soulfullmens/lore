@@ -26,10 +26,11 @@
     ]
   },
 
-  "problem": "TaskGroup cancels sibling tasks when one fails (unlike gather) and then, on exiting the async-with block, re-raises ALL child exceptions bundled in an ExceptionGroup. A conventional `except ValueError:` around the block does not match an ExceptionGroup, so the exception is not caught and propagates uncaught, crashing the program. This bites developers migrating from asyncio.gather (which raises the bare exception) to TaskGroup (which wraps it).",
+  "problem": "TaskGroup cancels sibling tasks when one fails (unlike gather) and then, on exiting the async-with block, re-raises ALL child exceptions bundled in an ExceptionGroup. A conventional `except ValueError:` around the block does not match an ExceptionGroup, so the exception is not caught and propagates uncaught, crashing the program. Note on cancellation: TaskGroup delivers CancelledError to sibling tasks internally (triggering their finally/except CancelledError blocks for cleanup), but strips CancelledError from the final ExceptionGroup raised at the block exit so only non-cancellation child errors arrive in the group.",
   "procedure": [
     "Catch grouped exceptions with `except* ValueError as eg:` — the star form unwraps the ExceptionGroup and binds a subgroup containing the matching exceptions.",
-    "Access individual errors via `eg.exceptions`; multiple child tasks can fail and all their exceptions arrive together.",
+    "Access individual errors via `eg.exceptions`; multiple non-cancellation child tasks can fail and all their exceptions arrive together in the group.",
+    "Ensure sibling tasks use `finally:` or `except asyncio.CancelledError:` for cleanup — TaskGroup cancels siblings immediately when one task fails, and their CancelledError is handled internally during block teardown.",
     "If you must interoperate with code that expects a bare exception, unwrap explicitly: catch the ExceptionGroup, inspect `.exceptions`, and re-raise the single one."
   ],
   "anti_patterns": [
