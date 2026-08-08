@@ -95,6 +95,11 @@ def verify(lesson_path: Path, stamp: bool, schema_path: Path | None):
         for r in variant.assert_results:
             mark = "✅" if r.passed else "❌"
             click.echo(f"    {mark} [{r.assertion['type']}] {r.detail}")
+        if not variant.passed:
+            if o.stdout:
+                click.echo(f"    --- STDOUT ---\n    {o.stdout.strip()}")
+            if o.stderr:
+                click.echo(f"    --- STDERR ---\n    {o.stderr.strip()}")
 
     click.echo("")
     if report.verdict == "pass":

@@ -60,11 +60,23 @@ class VerifyReport:
 
 
 def _write_files(workdir: Path, files: dict[str, str]) -> None:
+    try:
+        workdir.chmod(0o755)
+    except Exception:
+        pass
     for name, content in files.items():
         target = (workdir / name).resolve()
         target.relative_to(workdir.resolve())  # raises on traversal — refuse ../ names
         target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.parent.chmod(0o755)
+        except Exception:
+            pass
         target.write_text(content, encoding="utf-8")
+        try:
+            target.chmod(0o644)
+        except Exception:
+            pass
 
 
 def run_eval(
