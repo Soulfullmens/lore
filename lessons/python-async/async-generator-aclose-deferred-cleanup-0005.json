@@ -4,7 +4,7 @@
   "semver": "1.1.0",
   "kind": "gotcha",
 
-  "summary": "Breaking early out of `async for` over an async generator does NOT run its `finally:` cleanup at the break — cleanup is deferred silently to GC / loop teardown, so a resource is still held after the loop. Close it with `await gen.aclose()` or `contextlib.aclosing`.",
+  "summary": "Breaking early out of `async for` over an async generator defers `finally:` cleanup silently to GC / loop teardown — close it explicitly with `await gen.aclose()` or `contextlib.aclosing`.",
   "symptoms": [
     "resource still held after breaking out of an async for loop",
     "file handle or lock not released after early break from async generator",
