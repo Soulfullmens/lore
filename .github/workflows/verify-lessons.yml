@@ -33,6 +33,7 @@ jobs:
 
       - name: Validate all lessons against schema
         run: |
+          shopt -s globstar nullglob
           FAILED=0
           for lesson in lessons/**/*.json; do
             echo "Validating $lesson..."
@@ -241,6 +242,7 @@ jobs:
 
       - name: Run lore static-check CLI on all lessons
         run: |
+          shopt -s globstar nullglob
           for lesson in lessons/**/*.json; do
             echo "Running static-check on $lesson..."
             lore static-check "$lesson"

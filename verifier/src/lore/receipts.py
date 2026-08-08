@@ -1,7 +1,8 @@
 """Verification receipts generator for Lore.
 
-Every verification run creates a signed receipt in receipts/<domain>/<slug>-<seq>/<UTC-timestamp>.json.
+Generates receipts in receipts/<domain>/<slug>-<seq>/<UTC-timestamp>.json.
 Committed to the repo as public, auditable proof of verification.
+Note: Signature infrastructure (ed25519) lands in v1; signature is currently None.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ def generate_receipt(
     verifier_id: str = "official-verifier-v0.2",
 ) -> dict[str, Any]:
     """Generate a receipt dict from a VerifyReport."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     variants_data = []
     for v in report.variants:
@@ -53,6 +54,7 @@ def generate_receipt(
         },
         "verdict": report.verdict,
         "variants": variants_data,
+        "signature": None,  # ed25519 signing lands in v1
     }
 
 
@@ -66,8 +68,8 @@ def save_receipt(receipt: dict[str, Any], repo_root: Path) -> Path:
     target_dir = repo_root / "receipts" / domain / slug_seq
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    ts_clean = receipt["timestamp"].replace(":", "-").replace(".", "-")
-    receipt_file = target_dir / f"{ts_clean}.json"
+    ts = receipt["timestamp"]
+    receipt_file = target_dir / f"{ts}.json"
 
     receipt_file.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
     return receipt_file
