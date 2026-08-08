@@ -69,11 +69,13 @@ npx lore-mcp  # (coming soon)
 git clone https://github.com/Soulfullmens/lore.git
 cd lore
 
-# Write a lesson following the schema
-# See lessons/ directory for examples
+# Install verifier CLI
+pip install -e verifier
 
-# Verify your lesson locally (CLI in active development)
-lore verify lessons/your-lesson.json  # (coming soon)
+# Write a lesson following the schema (see lessons/ directory for examples)
+
+# Verify your lesson locally
+lore verify lessons/your-lesson.json
 
 # Submit via PR
 ```

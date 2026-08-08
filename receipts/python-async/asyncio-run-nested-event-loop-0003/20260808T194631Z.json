@@ -1,0 +1,86 @@
+{
+  "receipt_version": "0.2",
+  "lesson_id": "lore:python-async/asyncio-run-nested-event-loop/0003",
+  "semver": "1.1.0",
+  "timestamp": "20260808T194631Z",
+  "verifier_id": "official-verifier-v0.2",
+  "environment": {
+    "image_tag": "lore-verify:9b896145373a1b9b",
+    "image_digest": "sha256:7e49cfd3a8afb9e6b7295fdeb0d9d2997f370cf03bdf84295075ce1acdb8777d",
+    "image_cached": false,
+    "setup_network": "none",
+    "eval_network": "none"
+  },
+  "verdict": "pass",
+  "variants": [
+    {
+      "variant": "negative",
+      "command": "python test_broken.py",
+      "exit_code": 1,
+      "duration_sec": 1.897,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 1
+          },
+          "passed": true,
+          "detail": "exit_code=1, expected 1"
+        },
+        {
+          "assertion": {
+            "type": "stderr_contains",
+            "value": "cannot be called from a running event loop"
+          },
+          "passed": true,
+          "detail": "'cannot be called from a running event loop' found in stderr"
+        },
+        {
+          "assertion": {
+            "type": "stderr_contains",
+            "value": "was never awaited"
+          },
+          "passed": true,
+          "detail": "'was never awaited' found in stderr"
+        }
+      ]
+    },
+    {
+      "variant": "positive",
+      "command": "python test_fix.py",
+      "exit_code": 0,
+      "duration_sec": 1.858,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 0
+          },
+          "passed": true,
+          "detail": "exit_code=0, expected 0"
+        },
+        {
+          "assertion": {
+            "type": "stdout_contains",
+            "value": "SUCCESS"
+          },
+          "passed": true,
+          "detail": "'SUCCESS' found in stdout"
+        },
+        {
+          "assertion": {
+            "type": "stderr_not_contains",
+            "value": "running event loop"
+          },
+          "passed": true,
+          "detail": "'running event loop' not found in stderr"
+        }
+      ]
+    }
+  ],
+  "signature": null
+}

@@ -3,7 +3,6 @@
   "id": "lore:python-async/taskgroup-exceptiongroup-except-star/0004",
   "semver": "1.0.0",
   "kind": "gotcha",
-
   "summary": "asyncio.TaskGroup wraps child-task exceptions in an ExceptionGroup, so a plain `except ValueError` around the `async with` block does NOT catch them and the error escapes; use `except*` (Python 3.11+).",
   "symptoms": [
     "ExceptionGroup: unhandled errors in a TaskGroup",
@@ -12,31 +11,39 @@
     "handler stopped working after migrating from asyncio.gather to TaskGroup"
   ],
   "domain": "python-async",
-  "tags": ["asyncio", "TaskGroup", "ExceptionGroup", "except-star", "exception-handling"],
-
+  "tags": [
+    "asyncio",
+    "TaskGroup",
+    "ExceptionGroup",
+    "except-star",
+    "exception-handling"
+  ],
   "context": {
     "language": "python",
     "runtime": ">=3.11,<3.14",
     "dependencies": {},
-    "os": ["linux", "macos", "windows"],
+    "os": [
+      "linux",
+      "macos",
+      "windows"
+    ],
     "preconditions": [
       "Using asyncio.TaskGroup (Python 3.11+)",
       "A child task raises an exception",
       "Handler around the async-with block uses plain `except`, not `except*`"
     ]
   },
-
   "problem": "TaskGroup cancels sibling tasks when one fails (unlike gather) and then, on exiting the async-with block, re-raises ALL child exceptions bundled in an ExceptionGroup. A conventional `except ValueError:` around the block does not match an ExceptionGroup, so the exception is not caught and propagates uncaught, crashing the program. Note on cancellation: TaskGroup delivers CancelledError to sibling tasks internally (triggering their finally/except CancelledError blocks for cleanup), but strips CancelledError from the final ExceptionGroup raised at the block exit so only non-cancellation child errors arrive in the group.",
   "procedure": [
-    "Catch grouped exceptions with `except* ValueError as eg:` — the star form unwraps the ExceptionGroup and binds a subgroup containing the matching exceptions.",
+    "Catch grouped exceptions with `except* ValueError as eg:` \u2014 the star form unwraps the ExceptionGroup and binds a subgroup containing the matching exceptions.",
     "Access individual errors via `eg.exceptions`; multiple non-cancellation child tasks can fail and all their exceptions arrive together in the group.",
-    "Ensure sibling tasks use `finally:` or `except asyncio.CancelledError:` for cleanup — TaskGroup cancels siblings immediately when one task fails, and their CancelledError is handled internally during block teardown.",
+    "Ensure sibling tasks use `finally:` or `except asyncio.CancelledError:` for cleanup \u2014 TaskGroup cancels siblings immediately when one task fails, and their CancelledError is handled internally during block teardown.",
     "If you must interoperate with code that expects a bare exception, unwrap explicitly: catch the ExceptionGroup, inspect `.exceptions`, and re-raise the single one."
   ],
   "anti_patterns": [
-    "Using plain `except SomeError:` around a TaskGroup block — it will not catch exceptions wrapped in an ExceptionGroup.",
-    "Assuming TaskGroup behaves like gather for error handling — gather raises the first bare exception; TaskGroup always groups.",
-    "Mixing `except` and `except*` in the same try statement — Python forbids it and raises SyntaxError."
+    "Using plain `except SomeError:` around a TaskGroup block \u2014 it will not catch exceptions wrapped in an ExceptionGroup.",
+    "Assuming TaskGroup behaves like gather for error handling \u2014 gather raises the first bare exception; TaskGroup always groups.",
+    "Mixing `except` and `except*` in the same try statement \u2014 Python forbids it and raises SyntaxError."
   ],
   "failed_attempts": [
     {
@@ -45,7 +52,6 @@
       "time_wasted_estimate_min": 30
     }
   ],
-
   "verification": {
     "type": "container",
     "image": "python:3.12-slim",
@@ -55,8 +61,14 @@
     },
     "run": "python test_fix.py",
     "asserts": [
-      { "type": "exit_code", "equals": 0 },
-      { "type": "stdout_contains", "value": "SUCCESS" }
+      {
+        "type": "exit_code",
+        "equals": 0
+      },
+      {
+        "type": "stdout_contains",
+        "value": "SUCCESS"
+      }
     ],
     "must_fail_without_fix": true,
     "broken_files": {
@@ -64,32 +76,53 @@
     },
     "broken_run": "python test_broken.py",
     "broken_asserts": [
-      { "type": "exit_code", "equals": 1 },
-      { "type": "stderr_contains", "value": "ExceptionGroup: unhandled errors in a TaskGroup" },
-      { "type": "stdout_not_contains", "value": "caught as ValueError" }
+      {
+        "type": "exit_code",
+        "equals": 1
+      },
+      {
+        "type": "stderr_contains",
+        "value": "ExceptionGroup: unhandled errors in a TaskGroup"
+      },
+      {
+        "type": "stdout_not_contains",
+        "value": "caught as ValueError"
+      }
     ],
     "timeout_sec": 30,
     "setup_network": "none",
     "network": "none"
   },
-
   "lifecycle": {
-    "status": "draft",
+    "status": "verified",
     "reverify_cadence_days": 60,
-    "watch": []
+    "watch": [],
+    "first_verified": "2026-08-08T19:49:26.111200+00:00",
+    "last_verified": "2026-08-08T19:49:26.111200+00:00"
   },
   "trust": {
     "independent_reproductions": 0,
-    "usage_reports": { "worked": 0, "failed": 0 },
+    "usage_reports": {
+      "worked": 0,
+      "failed": 0
+    },
     "disputes_open": 0
   },
-
   "provenance": {
     "author_human": "github:Soulfullmens",
-    "author_agent": { "model": "claude-fable-5", "role": "empirically observed on Python 3.12.3 that plain except does not catch TaskGroup's ExceptionGroup (handler never fired, error escaped) and that except* does; wrote both variants from observed behavior" },
+    "author_agent": {
+      "model": "claude-fable-5",
+      "role": "empirically observed on Python 3.12.3 that plain except does not catch TaskGroup's ExceptionGroup (handler never fired, error escaped) and that except* does; wrote both variants from observed behavior"
+    },
     "sources": [
-      { "url": "https://docs.python.org/3/library/asyncio-task.html#asyncio.TaskGroup", "taint": "trusted_docs" },
-      { "url": "https://docs.python.org/3/reference/compound_stmts.html#except-star", "taint": "trusted_docs" }
+      {
+        "url": "https://docs.python.org/3/library/asyncio-task.html#asyncio.TaskGroup",
+        "taint": "trusted_docs"
+      },
+      {
+        "url": "https://docs.python.org/3/reference/compound_stmts.html#except-star",
+        "taint": "trusted_docs"
+      }
     ],
     "taint_level": "clean",
     "signature": ""

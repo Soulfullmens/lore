@@ -1,0 +1,78 @@
+{
+  "receipt_version": "0.2",
+  "lesson_id": "lore:python-async/aiohttp-session-close-event-loop/0001",
+  "semver": "1.1.0",
+  "timestamp": "20260808T195045Z",
+  "verifier_id": "official-verifier-v0.2",
+  "environment": {
+    "image_tag": "lore-verify:be1d5375569b86f4",
+    "image_digest": "sha256:f011b5b1f72b58e6c21016eb0cbb8e2bd70d1e7b0bd645206ec189f5ee5149a7",
+    "image_cached": false,
+    "setup_network": "packages",
+    "eval_network": "none"
+  },
+  "verdict": "pass",
+  "variants": [
+    {
+      "variant": "negative",
+      "command": "python test_broken.py",
+      "exit_code": 0,
+      "duration_sec": 1.722,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 0
+          },
+          "passed": true,
+          "detail": "exit_code=0, expected 0"
+        },
+        {
+          "assertion": {
+            "type": "stderr_contains",
+            "value": "Unclosed client session"
+          },
+          "passed": true,
+          "detail": "'Unclosed client session' found in stderr"
+        }
+      ]
+    },
+    {
+      "variant": "positive",
+      "command": "python test_fix.py",
+      "exit_code": 0,
+      "duration_sec": 1.481,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 0
+          },
+          "passed": true,
+          "detail": "exit_code=0, expected 0"
+        },
+        {
+          "assertion": {
+            "type": "stdout_contains",
+            "value": "SUCCESS"
+          },
+          "passed": true,
+          "detail": "'SUCCESS' found in stdout"
+        },
+        {
+          "assertion": {
+            "type": "stderr_not_contains",
+            "value": "Unclosed client session"
+          },
+          "passed": true,
+          "detail": "'Unclosed client session' not found in stderr"
+        }
+      ]
+    }
+  ],
+  "signature": null
+}

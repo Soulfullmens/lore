@@ -1,0 +1,70 @@
+{
+  "receipt_version": "0.2",
+  "lesson_id": "lore:python-async/asyncio-gather-detached-siblings/0002",
+  "semver": "2.0.0",
+  "timestamp": "20260808T194803Z",
+  "verifier_id": "official-verifier-v0.2",
+  "environment": {
+    "image_tag": "lore-verify:9b896145373a1b9b",
+    "image_digest": "sha256:7e49cfd3a8afb9e6b7295fdeb0d9d2997f370cf03bdf84295075ce1acdb8777d",
+    "image_cached": true,
+    "setup_network": "none",
+    "eval_network": "none"
+  },
+  "verdict": "pass",
+  "variants": [
+    {
+      "variant": "negative",
+      "command": "python test_broken.py",
+      "exit_code": 1,
+      "duration_sec": 2.068,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 1
+          },
+          "passed": true,
+          "detail": "exit_code=1, expected 1"
+        },
+        {
+          "assertion": {
+            "type": "stderr_contains",
+            "value": "DETACHED SIBLING COMPLETED AFTER GATHER RAISED"
+          },
+          "passed": true,
+          "detail": "'DETACHED SIBLING COMPLETED AFTER GATHER RAISED' found in stderr"
+        }
+      ]
+    },
+    {
+      "variant": "positive",
+      "command": "python test_fix.py",
+      "exit_code": 0,
+      "duration_sec": 1.848,
+      "timed_out": false,
+      "passed": true,
+      "assertions": [
+        {
+          "assertion": {
+            "type": "exit_code",
+            "equals": 0
+          },
+          "passed": true,
+          "detail": "exit_code=0, expected 0"
+        },
+        {
+          "assertion": {
+            "type": "stdout_contains",
+            "value": "SUCCESS"
+          },
+          "passed": true,
+          "detail": "'SUCCESS' found in stdout"
+        }
+      ]
+    }
+  ],
+  "signature": null
+}

@@ -65,7 +65,7 @@ def generate_dockerfile(image: str, setup: list[str]) -> str:
 
 def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, check=False
+        cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=timeout, check=False
     )
 
 

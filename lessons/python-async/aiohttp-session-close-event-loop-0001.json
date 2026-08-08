@@ -3,7 +3,6 @@
   "id": "lore:python-async/aiohttp-session-close-event-loop/0001",
   "semver": "1.1.0",
   "kind": "lesson",
-
   "summary": "An aiohttp ClientSession that is never closed before its event loop tears down emits 'Unclosed client session' at GC and leaks connector resources; close it inside the coroutine, ideally via async context manager.",
   "symptoms": [
     "Unclosed client session",
@@ -12,29 +11,38 @@
     "RuntimeError: Event loop is closed"
   ],
   "domain": "python-async",
-  "tags": ["aiohttp", "asyncio", "resource-cleanup", "event-loop"],
-
+  "tags": [
+    "aiohttp",
+    "asyncio",
+    "resource-cleanup",
+    "event-loop"
+  ],
   "context": {
     "language": "python",
     "runtime": ">=3.10,<3.14",
-    "dependencies": { "aiohttp": ">=3.9,<4.0" },
-    "os": ["linux", "macos", "windows"],
+    "dependencies": {
+      "aiohttp": ">=3.9,<4.0"
+    },
+    "os": [
+      "linux",
+      "macos",
+      "windows"
+    ],
     "preconditions": [
       "ClientSession created inside asyncio.run() or a managed event loop",
       "Session not explicitly closed before the top-level coroutine returns"
     ]
   },
-
-  "problem": "A ClientSession garbage-collected after its event loop has closed cannot release its connector. The minimal symptom is 'Unclosed client session' on stderr with a normal exit code 0 — the process does not crash, which is why this leak survives in production. When requests were actually made, teardown can additionally raise 'RuntimeError: Event loop is closed' from transport callbacks, and file descriptors leak under sustained load.",
+  "problem": "A ClientSession garbage-collected after its event loop has closed cannot release its connector. The minimal symptom is 'Unclosed client session' on stderr with a normal exit code 0 \u2014 the process does not crash, which is why this leak survives in production. When requests were actually made, teardown can additionally raise 'RuntimeError: Event loop is closed' from transport callbacks, and file descriptors leak under sustained load.",
   "procedure": [
     "Use `async with aiohttp.ClientSession() as session:` inside the coroutine passed to asyncio.run(). The context manager guarantees close before loop teardown.",
     "If the session's lifetime must span multiple functions, call `await session.close()` explicitly before the top-level coroutine returns.",
     "For TLS connections, add `await asyncio.sleep(0)` after close() to let SSL transports finalize (aiohttp docs, 'Graceful Shutdown')."
   ],
   "anti_patterns": [
-    "Closing the session in atexit or __del__ — the event loop is already gone by then.",
-    "Creating a new event loop just to close the session — the connector is bound to the original (now dead) loop.",
-    "Treating exit code 0 as proof of health — this failure mode exits 0; the evidence is on stderr."
+    "Closing the session in atexit or __del__ \u2014 the event loop is already gone by then.",
+    "Creating a new event loop just to close the session \u2014 the connector is bound to the original (now dead) loop.",
+    "Treating exit code 0 as proof of health \u2014 this failure mode exits 0; the evidence is on stderr."
   ],
   "failed_attempts": [
     {
@@ -48,51 +56,81 @@
       "time_wasted_estimate_min": 15
     }
   ],
-
   "verification": {
     "type": "container",
     "image": "python:3.12-slim",
-    "setup": ["pip install 'aiohttp>=3.9,<4.0'"],
+    "setup": [
+      "pip install 'aiohttp>=3.9,<4.0'"
+    ],
     "files": {
       "test_fix.py": "import asyncio\nimport gc\nimport aiohttp\n\nasync def main():\n    # FIX: async context manager closes the session inside its own loop\n    async with aiohttp.ClientSession() as session:\n        pass  # lifecycle proof; no network needed\n\nasyncio.run(main())\ngc.collect()\nprint('SUCCESS: session closed inside its event loop')\n"
     },
     "run": "python test_fix.py",
     "asserts": [
-      { "type": "exit_code", "equals": 0 },
-      { "type": "stdout_contains", "value": "SUCCESS" },
-      { "type": "stderr_not_contains", "value": "Unclosed client session" }
+      {
+        "type": "exit_code",
+        "equals": 0
+      },
+      {
+        "type": "stdout_contains",
+        "value": "SUCCESS"
+      },
+      {
+        "type": "stderr_not_contains",
+        "value": "Unclosed client session"
+      }
     ],
     "must_fail_without_fix": true,
     "broken_files": {
-      "test_broken.py": "import asyncio\nimport gc\nimport aiohttp\n\nasync def main():\n    # BROKEN: session created, never closed — GC'd after loop teardown\n    session = aiohttp.ClientSession()\n\nasyncio.run(main())\ngc.collect()\n# No hardcoded exit. Empirically this exits 0 with the symptom on stderr —\n# which is exactly why symptom-based broken_asserts exist.\n"
+      "test_broken.py": "import asyncio\nimport gc\nimport aiohttp\n\nasync def main():\n    # BROKEN: session created, never closed \u2014 GC'd after loop teardown\n    session = aiohttp.ClientSession()\n\nasyncio.run(main())\ngc.collect()\n# No hardcoded exit. Empirically this exits 0 with the symptom on stderr \u2014\n# which is exactly why symptom-based broken_asserts exist.\n"
     },
     "broken_run": "python test_broken.py",
     "broken_asserts": [
-      { "type": "exit_code", "equals": 0 },
-      { "type": "stderr_contains", "value": "Unclosed client session" }
+      {
+        "type": "exit_code",
+        "equals": 0
+      },
+      {
+        "type": "stderr_contains",
+        "value": "Unclosed client session"
+      }
     ],
     "timeout_sec": 60,
     "setup_network": "packages",
     "network": "none"
   },
-
   "lifecycle": {
-    "status": "draft",
+    "status": "verified",
     "reverify_cadence_days": 30,
-    "watch": ["pypi:aiohttp"]
+    "watch": [
+      "pypi:aiohttp"
+    ],
+    "first_verified": "2026-08-08T19:50:45.432756+00:00",
+    "last_verified": "2026-08-08T19:50:45.432756+00:00"
   },
   "trust": {
     "independent_reproductions": 0,
-    "usage_reports": { "worked": 0, "failed": 0 },
+    "usage_reports": {
+      "worked": 0,
+      "failed": 0
+    },
     "disputes_open": 0
   },
-
   "provenance": {
     "author_human": "github:Soulfullmens",
-    "author_agent": { "model": "claude-fable-5", "role": "drafted procedure; empirically ran both variants on Python 3.12.3 + aiohttp 3.x and captured verbatim stderr symptoms" },
+    "author_agent": {
+      "model": "claude-fable-5",
+      "role": "drafted procedure; empirically ran both variants on Python 3.12.3 + aiohttp 3.x and captured verbatim stderr symptoms"
+    },
     "sources": [
-      { "url": "https://docs.aiohttp.org/en/stable/client_advanced.html", "taint": "trusted_docs" },
-      { "url": "https://docs.aiohttp.org/en/stable/client_quickstart.html#aiohttp-client-session", "taint": "trusted_docs" }
+      {
+        "url": "https://docs.aiohttp.org/en/stable/client_advanced.html",
+        "taint": "trusted_docs"
+      },
+      {
+        "url": "https://docs.aiohttp.org/en/stable/client_quickstart.html#aiohttp-client-session",
+        "taint": "trusted_docs"
+      }
     ],
     "taint_level": "clean",
     "signature": ""

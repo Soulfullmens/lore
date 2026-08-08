@@ -3,8 +3,7 @@
   "id": "lore:python-async/asyncio-run-nested-event-loop/0003",
   "semver": "1.1.0",
   "kind": "anti_lesson",
-
-  "summary": "Calling asyncio.run() inside an already-running event loop raises 'asyncio.run() cannot be called from a running event loop'; nest_asyncio is a workaround that causes reentrancy deadlocks in production — await directly or use the framework's sync-to-async bridge.",
+  "summary": "Calling asyncio.run() inside an already-running event loop raises 'asyncio.run() cannot be called from a running event loop'; nest_asyncio is a workaround that causes reentrancy deadlocks in production \u2014 await directly or use the framework's sync-to-async bridge.",
   "symptoms": [
     "RuntimeError: asyncio.run() cannot be called from a running event loop",
     "RuntimeError: This event loop is already running",
@@ -13,29 +12,37 @@
     "asyncio.run() fails inside async framework callback"
   ],
   "domain": "python-async",
-  "tags": ["asyncio", "event-loop", "nest-asyncio", "jupyter", "anti-pattern"],
-
+  "tags": [
+    "asyncio",
+    "event-loop",
+    "nest-asyncio",
+    "jupyter",
+    "anti-pattern"
+  ],
   "context": {
     "language": "python",
     "runtime": ">=3.10,<3.14",
     "dependencies": {},
-    "os": ["linux", "macos", "windows"],
+    "os": [
+      "linux",
+      "macos",
+      "windows"
+    ],
     "preconditions": [
       "Code executing inside an already-active event loop (Jupyter, async web framework, async test runner)"
     ]
   },
-
-  "problem": "asyncio.run() creates a new event loop; called while a loop is already running it raises RuntimeError ('cannot be called from a running event loop' on modern Python; older code and Jupyter surfaces may show 'This event loop is already running'), and the passed coroutine is additionally never awaited. The popular workaround — nest_asyncio.apply() — patches the loop to allow reentrance, masking the design problem and enabling deadlocks when coroutines on the same loop block on each other under load.",
+  "problem": "asyncio.run() creates a new event loop; called while a loop is already running it raises RuntimeError ('cannot be called from a running event loop' on modern Python; older code and Jupyter surfaces may show 'This event loop is already running'), and the passed coroutine is additionally never awaited. The popular workaround \u2014 nest_asyncio.apply() \u2014 patches the loop to allow reentrance, masking the design problem and enabling deadlocks when coroutines on the same loop block on each other under load.",
   "procedure": [
-    "Inside any async context, do not call asyncio.run() — `await` the coroutine directly.",
+    "Inside any async context, do not call asyncio.run() \u2014 `await` the coroutine directly.",
     "In Jupyter, `await` at the top level of a cell; IPython's loop handles it natively.",
     "Bridging sync code that lives inside an async framework: use the framework's own mechanism (Starlette's run_in_threadpool, Django's async_to_sync) rather than creating loops.",
-    "Bridging from a genuinely separate thread: asyncio.run_coroutine_threadsafe(coro, loop) schedules onto the existing loop without nesting — only valid from a DIFFERENT thread than the loop's."
+    "Bridging from a genuinely separate thread: asyncio.run_coroutine_threadsafe(coro, loop) schedules onto the existing loop without nesting \u2014 only valid from a DIFFERENT thread than the loop's."
   ],
   "anti_patterns": [
-    "nest_asyncio.apply() in production — enables the reentrance asyncio is designed to prevent; coroutines on one loop can mutually block into deadlock, and 'one thing at a time' debugging guarantees are gone.",
-    "Calling run_coroutine_threadsafe from the loop's own thread and blocking on .result() — deadlocks immediately.",
-    "Spawning a new thread with its own loop per sync-to-async call — works, then explodes thread count under load."
+    "nest_asyncio.apply() in production \u2014 enables the reentrance asyncio is designed to prevent; coroutines on one loop can mutually block into deadlock, and 'one thing at a time' debugging guarantees are gone.",
+    "Calling run_coroutine_threadsafe from the loop's own thread and blocking on .result() \u2014 deadlocks immediately.",
+    "Spawning a new thread with its own loop per sync-to-async call \u2014 works, then explodes thread count under load."
   ],
   "failed_attempts": [
     {
@@ -49,51 +56,77 @@
       "time_wasted_estimate_min": 10
     }
   ],
-
   "verification": {
     "type": "container",
     "image": "python:3.12-slim",
     "setup": [],
     "files": {
-      "test_fix.py": "import asyncio\nimport sys\n\nasync def inner():\n    return 'hello from inner'\n\nasync def outer():\n    # FIX: inside an async context, just await — never asyncio.run()\n    result = await inner()\n    assert result == 'hello from inner'\n    print('SUCCESS: awaited directly, no nested loop')\n\nasyncio.run(outer())\nsys.exit(0)\n"
+      "test_fix.py": "import asyncio\nimport sys\n\nasync def inner():\n    return 'hello from inner'\n\nasync def outer():\n    # FIX: inside an async context, just await \u2014 never asyncio.run()\n    result = await inner()\n    assert result == 'hello from inner'\n    print('SUCCESS: awaited directly, no nested loop')\n\nasyncio.run(outer())\nsys.exit(0)\n"
     },
     "run": "python test_fix.py",
     "asserts": [
-      { "type": "exit_code", "equals": 0 },
-      { "type": "stdout_contains", "value": "SUCCESS" },
-      { "type": "stderr_not_contains", "value": "running event loop" }
+      {
+        "type": "exit_code",
+        "equals": 0
+      },
+      {
+        "type": "stdout_contains",
+        "value": "SUCCESS"
+      },
+      {
+        "type": "stderr_not_contains",
+        "value": "running event loop"
+      }
     ],
     "must_fail_without_fix": true,
     "broken_files": {
-      "test_broken.py": "import asyncio\n\nasync def inner():\n    return 'hello from inner'\n\nasync def outer():\n    # BROKEN: asyncio.run() inside a running loop — crashes naturally,\n    # no try/except, no hardcoded exit.\n    return asyncio.run(inner())\n\nasyncio.run(outer())\n"
+      "test_broken.py": "import asyncio\n\nasync def inner():\n    return 'hello from inner'\n\nasync def outer():\n    # BROKEN: asyncio.run() inside a running loop \u2014 crashes naturally,\n    # no try/except, no hardcoded exit.\n    return asyncio.run(inner())\n\nasyncio.run(outer())\n"
     },
     "broken_run": "python test_broken.py",
     "broken_asserts": [
-      { "type": "exit_code", "equals": 1 },
-      { "type": "stderr_contains", "value": "cannot be called from a running event loop" },
-      { "type": "stderr_contains", "value": "was never awaited" }
+      {
+        "type": "exit_code",
+        "equals": 1
+      },
+      {
+        "type": "stderr_contains",
+        "value": "cannot be called from a running event loop"
+      },
+      {
+        "type": "stderr_contains",
+        "value": "was never awaited"
+      }
     ],
     "timeout_sec": 30,
     "setup_network": "none",
     "network": "none"
   },
-
   "lifecycle": {
-    "status": "draft",
+    "status": "verified",
     "reverify_cadence_days": 60,
-    "watch": []
+    "watch": [],
+    "first_verified": "2026-08-08T19:46:31.486747+00:00",
+    "last_verified": "2026-08-08T19:46:31.486747+00:00"
   },
   "trust": {
     "independent_reproductions": 0,
-    "usage_reports": { "worked": 0, "failed": 0 },
+    "usage_reports": {
+      "worked": 0,
+      "failed": 0
+    },
     "disputes_open": 0
   },
-
   "provenance": {
     "author_human": "github:Soulfullmens",
-    "author_agent": { "model": "claude-fable-5", "role": "ran broken variant on Python 3.12.3, captured verbatim RuntimeError and never-awaited warning; removed misleading same-thread run_coroutine_threadsafe demo from fix eval" },
+    "author_agent": {
+      "model": "claude-fable-5",
+      "role": "ran broken variant on Python 3.12.3, captured verbatim RuntimeError and never-awaited warning; removed misleading same-thread run_coroutine_threadsafe demo from fix eval"
+    },
     "sources": [
-      { "url": "https://docs.python.org/3/library/asyncio-runner.html#asyncio.run", "taint": "trusted_docs" }
+      {
+        "url": "https://docs.python.org/3/library/asyncio-runner.html#asyncio.run",
+        "taint": "trusted_docs"
+      }
     ],
     "taint_level": "clean",
     "signature": ""
