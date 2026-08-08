@@ -1,0 +1,161 @@
+name: Verify Lessons
+
+on:
+  pull_request:
+    paths:
+      - 'lessons/**'
+      - 'schemas/**'
+  push:
+    branches: [main]
+    paths:
+      - 'lessons/**'
+      - 'schemas/**'
+
+jobs:
+  validate-schema:
+    name: Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ajv-cli
+        run: npm install -g ajv-cli ajv-formats
+
+      - name: Validate all lessons against schema
+        run: |
+          FAILED=0
+          for lesson in lessons/**/*.json; do
+            echo "Validating $lesson..."
+            if ajv validate -s schemas/lesson.schema.json -d "$lesson" --spec=draft7 2>&1; then
+              echo "  ✅ PASS"
+            else
+              echo "  ❌ FAIL"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
+  check-budgets:
+    name: Token Budget Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tiktoken
+        run: pip install tiktoken
+
+      - name: Check token budgets
+        run: |
+          python -c "
+          import json, glob, sys
+          try:
+              import tiktoken
+              enc = tiktoken.get_encoding('cl100k_base')
+          except:
+              print('Warning: tiktoken not available, using word-count estimate')
+              enc = None
+
+          def count_tokens(text):
+              if enc:
+                  return len(enc.encode(text))
+              return len(text.split()) * 1.3  # rough estimate
+
+          failed = False
+          for path in sorted(glob.glob('lessons/**/*.json', recursive=True)):
+              with open(path) as f:
+                  lesson = json.load(f)
+
+              summary_tokens = count_tokens(lesson.get('summary', ''))
+              if summary_tokens > 60:
+                  print(f'❌ {path}: summary is {summary_tokens} tokens (max 60)')
+                  failed = True
+              else:
+                  print(f'✅ {path}: summary={int(summary_tokens)} tokens')
+
+              # Check full body budget (problem + procedure + anti_patterns + failed_attempts)
+              body_parts = [
+                  lesson.get('problem', ''),
+                  ' '.join(lesson.get('procedure', [])),
+                  ' '.join(lesson.get('anti_patterns', [])),
+              ]
+              for fa in lesson.get('failed_attempts', []):
+                  body_parts.append(fa.get('approach', ''))
+                  body_parts.append(fa.get('why_it_fails', ''))
+              body_tokens = count_tokens(' '.join(body_parts))
+              if body_tokens > 900:
+                  print(f'❌ {path}: body is {int(body_tokens)} tokens (max 900)')
+                  failed = True
+              else:
+                  print(f'✅ {path}: body={int(body_tokens)} tokens')
+
+          sys.exit(1 if failed else 0)
+          "
+
+  lint-injection:
+    name: Prompt Injection Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check for prompt injection patterns
+        run: |
+          python -c "
+          import json, glob, sys, re
+
+          # Patterns that look like prompt injection targeting agent readers
+          SUSPICIOUS_PATTERNS = [
+              r'ignore\s+(your|all|previous)\s+(instructions|rules|constraints)',
+              r'you\s+are\s+now\s+',
+              r'forget\s+(everything|your|all)',
+              r'system\s*prompt',
+              r'<\s*/?\s*system\s*>',
+              r'IMPORTANT:\s*(?:override|ignore|disregard)',
+              r'(?:execute|run|eval)\s+(?:this|the\s+following)\s+(?:command|code|script)',
+              r'base64\s*decode',
+              r'\\\\x[0-9a-f]{2}',  # hex escapes
+          ]
+
+          failed = False
+          for path in sorted(glob.glob('lessons/**/*.json', recursive=True)):
+              with open(path) as f:
+                  content = f.read()
+                  lesson = json.loads(content)
+
+              # Check all text fields
+              text_fields = [
+                  lesson.get('summary', ''),
+                  lesson.get('problem', ''),
+                  *lesson.get('procedure', []),
+                  *lesson.get('anti_patterns', []),
+                  *lesson.get('symptoms', []),
+              ]
+              for fa in lesson.get('failed_attempts', []):
+                  text_fields.extend([fa.get('approach', ''), fa.get('why_it_fails', '')])
+
+              all_text = ' '.join(text_fields).lower()
+
+              for pattern in SUSPICIOUS_PATTERNS:
+                  if re.search(pattern, all_text, re.IGNORECASE):
+                      print(f'⚠️  {path}: suspicious pattern found: {pattern}')
+                      failed = True
+
+              if not failed:
+                  print(f'✅ {path}: no injection patterns detected')
+
+          sys.exit(1 if failed else 0)
+          "
