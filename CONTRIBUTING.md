@@ -69,6 +69,7 @@ Before submitting, verify:
 - [ ] Broken variant fails naturally for the declared reason (no hardcoded `sys.exit(1)`)
 - [ ] `broken_asserts` describe the specific symptom the broken variant exhibits
 - [ ] Broken variant gates symptom output on observed runtime behavior (no unconditional prints)
+- [ ] **No Placebo Errors**: Broken variant must fail because the bug actually occurs, not because the test script raises an artificial exception to order. If a `broken_asserts` value is a string printed by the test script itself, it must describe an observed fact about the bug's effect, never a synthetic error message chosen solely to satisfy the assertion.
 - [ ] Fix variant resolves the problem completely
 - [ ] Eval runs offline (`network: "none"`) — use `setup_network: "packages"` for pip/npm
 - [ ] No secrets, credentials, or PII in any field
