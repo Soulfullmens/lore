@@ -103,9 +103,35 @@ def check_prompt_injection(lesson: dict[str, Any]) -> CheckResult:
     return CheckResult("prompt_injection", True, "no prompt injection patterns detected")
 
 
-def run_static_checks(lesson: dict[str, Any], schema_path: Path) -> list[CheckResult]:
-    """Run all static checks (schema, budgets, injection)."""
-    results = [validate_schema(lesson, schema_path)]
+def check_duplicate_keys(raw_json: str) -> CheckResult:
+    """Parse JSON with object_pairs_hook to reject duplicate keys."""
+
+    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        d: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in d:
+                raise ValueError(f"duplicate key detected in JSON: {key!r}")
+            d[key] = value
+        return d
+
+    try:
+        json.loads(raw_json, object_pairs_hook=_no_duplicates)
+        return CheckResult("duplicate_keys", True, "no duplicate keys detected")
+    except ValueError as e:
+        return CheckResult("duplicate_keys", False, str(e))
+    except Exception as e:
+        return CheckResult("duplicate_keys", False, f"JSON parse error: {e}")
+
+
+def run_static_checks(lesson: dict[str, Any], schema_path: Path, raw_json: str | None = None) -> list[CheckResult]:
+    """Run all static checks (schema, duplicate keys, budgets, injection)."""
+    results = []
+
+    if raw_json:
+        results.append(check_duplicate_keys(raw_json))
+
+    results.append(validate_schema(lesson, schema_path))
     results.extend(check_token_budgets(lesson))
     results.append(check_prompt_injection(lesson))
     return results
+

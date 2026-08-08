@@ -15,6 +15,7 @@ import pytest
 
 from lore.asserts import EvalOutput, all_passed, evaluate_assertion
 from lore.builder import context_hash, generate_dockerfile
+from lore.static_checks import check_duplicate_keys
 from lore import runner as runner_mod
 from lore.runner import _write_files, verify_lesson
 
@@ -190,3 +191,15 @@ def test_no_negative_when_must_fail_false(monkeypatch):
     assert report.verdict == "pass"
     assert [v.variant for v in report.variants] == ["positive"]
     assert calls == ["python test_fix.py"]
+
+
+# ---------------- duplicate key static check ----------------
+
+def test_duplicate_key_check_rejects_duplicates():
+    valid_json = '{"a": 1, "b": 2}'
+    dupe_json = '{"a": 1, "a": 2}'
+    assert check_duplicate_keys(valid_json).passed
+    res = check_duplicate_keys(dupe_json)
+    assert not res.passed
+    assert "duplicate key detected" in res.detail
+

@@ -45,15 +45,17 @@ def verify(lesson_path: Path, stamp: bool, json_out: bool, schema_path: Path | N
         click.echo(f"📋 Verifying {lesson_path}...")
 
     # Step 1: Read JSON
+    raw_text = lesson_path.read_text(encoding="utf-8")
     try:
-        lesson = json.loads(lesson_path.read_text(encoding="utf-8"))
+        lesson = json.loads(raw_text)
     except Exception as e:
         click.secho(f"❌ Failed to parse JSON: {e}", fg="red")
         sys.exit(1)
 
     # Step 2: Static Checks
-    click.echo("🔍 Running static checks (schema, token budgets, prompt injection)...")
-    checks = run_static_checks(lesson, schema_path)
+    if not json_out:
+        click.echo("🔍 Running static checks (schema, duplicate keys, token budgets, prompt injection)...")
+    checks = run_static_checks(lesson, schema_path, raw_json=raw_text)
     all_static_ok = True
     for c in checks:
         if c.passed:
@@ -140,13 +142,14 @@ def static_check(lesson_path: Path, schema_path: Path | None):
     if schema_path is None:
         schema_path = repo_root / "schemas" / "lesson.schema.json"
 
+    raw_text = lesson_path.read_text(encoding="utf-8")
     try:
-        lesson = json.loads(lesson_path.read_text(encoding="utf-8"))
+        lesson = json.loads(raw_text)
     except Exception as e:
         click.secho(f"❌ Failed to parse JSON: {e}", fg="red")
         sys.exit(1)
 
-    checks = run_static_checks(lesson, schema_path)
+    checks = run_static_checks(lesson, schema_path, raw_json=raw_text)
     failed = False
     for c in checks:
         if c.passed:
