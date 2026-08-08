@@ -1,0 +1,96 @@
+{
+  "lore_version": "0.2",
+  "id": "lore:python-async/taskgroup-exceptiongroup-except-star/0004",
+  "semver": "1.0.0",
+  "kind": "gotcha",
+
+  "summary": "asyncio.TaskGroup wraps child-task exceptions in an ExceptionGroup, so a plain `except ValueError` around the `async with` block does NOT catch them and the error escapes; use `except*` (Python 3.11+).",
+  "symptoms": [
+    "ExceptionGroup: unhandled errors in a TaskGroup",
+    "except clause did not catch exception raised inside TaskGroup",
+    "TaskGroup raised ExceptionGroup instead of the original exception",
+    "handler stopped working after migrating from asyncio.gather to TaskGroup"
+  ],
+  "domain": "python-async",
+  "tags": ["asyncio", "TaskGroup", "ExceptionGroup", "except-star", "exception-handling"],
+
+  "context": {
+    "language": "python",
+    "runtime": ">=3.11,<3.14",
+    "dependencies": {},
+    "os": ["linux", "macos", "windows"],
+    "preconditions": [
+      "Using asyncio.TaskGroup (Python 3.11+)",
+      "A child task raises an exception",
+      "Handler around the async-with block uses plain `except`, not `except*`"
+    ]
+  },
+
+  "problem": "TaskGroup cancels sibling tasks when one fails (unlike gather) and then, on exiting the async-with block, re-raises ALL child exceptions bundled in an ExceptionGroup. A conventional `except ValueError:` around the block does not match an ExceptionGroup, so the exception is not caught and propagates uncaught, crashing the program. This bites developers migrating from asyncio.gather (which raises the bare exception) to TaskGroup (which wraps it).",
+  "procedure": [
+    "Catch grouped exceptions with `except* ValueError as eg:` — the star form unwraps the ExceptionGroup and binds a subgroup containing the matching exceptions.",
+    "Access individual errors via `eg.exceptions`; multiple child tasks can fail and all their exceptions arrive together.",
+    "If you must interoperate with code that expects a bare exception, unwrap explicitly: catch the ExceptionGroup, inspect `.exceptions`, and re-raise the single one."
+  ],
+  "anti_patterns": [
+    "Using plain `except SomeError:` around a TaskGroup block — it will not catch exceptions wrapped in an ExceptionGroup.",
+    "Assuming TaskGroup behaves like gather for error handling — gather raises the first bare exception; TaskGroup always groups.",
+    "Mixing `except` and `except*` in the same try statement — Python forbids it and raises SyntaxError."
+  ],
+  "failed_attempts": [
+    {
+      "approach": "Keeping the existing `except ValueError` handler after switching gather -> TaskGroup",
+      "why_it_fails": "TaskGroup raises ExceptionGroup, which is not a ValueError; the handler silently never matches and the error escapes as 'ExceptionGroup: unhandled errors in a TaskGroup'.",
+      "time_wasted_estimate_min": 30
+    }
+  ],
+
+  "verification": {
+    "type": "container",
+    "image": "python:3.12-slim",
+    "setup": [],
+    "files": {
+      "test_fix.py": "import asyncio\nimport sys\n\ncaught = []\n\nasync def failing():\n    raise ValueError('boom')\n\nasync def sibling():\n    try:\n        await asyncio.sleep(1.0)\n    except asyncio.CancelledError:\n        caught.append('sibling_cancelled')\n        raise\n\nasync def main():\n    # FIX: except* unwraps the ExceptionGroup TaskGroup raises\n    try:\n        async with asyncio.TaskGroup() as tg:\n            tg.create_task(failing())\n            tg.create_task(sibling())\n    except* ValueError as eg:\n        caught.append(f'caught_{len(eg.exceptions)}_ValueError')\n\n    assert 'sibling_cancelled' in caught, caught\n    assert any(c.startswith('caught_') for c in caught), caught\n    print('SUCCESS: except* caught the grouped ValueError; sibling was cancelled')\n\nasyncio.run(main())\nsys.exit(0)\n"
+    },
+    "run": "python test_fix.py",
+    "asserts": [
+      { "type": "exit_code", "equals": 0 },
+      { "type": "stdout_contains", "value": "SUCCESS" }
+    ],
+    "must_fail_without_fix": true,
+    "broken_files": {
+      "test_broken.py": "import asyncio\n\nasync def failing():\n    raise ValueError('boom')\n\nasync def sibling():\n    await asyncio.sleep(1.0)\n\nasync def main():\n    # BROKEN: plain `except ValueError` does not catch an ExceptionGroup\n    try:\n        async with asyncio.TaskGroup() as tg:\n            tg.create_task(failing())\n            tg.create_task(sibling())\n    except ValueError:\n        print('caught as ValueError')  # never fires\n\nasyncio.run(main())\n"
+    },
+    "broken_run": "python test_broken.py",
+    "broken_asserts": [
+      { "type": "exit_code", "equals": 1 },
+      { "type": "stderr_contains", "value": "ExceptionGroup: unhandled errors in a TaskGroup" },
+      { "type": "stdout_not_contains", "value": "caught as ValueError" }
+    ],
+    "timeout_sec": 30,
+    "setup_network": "none",
+    "network": "none"
+  },
+
+  "lifecycle": {
+    "status": "draft",
+    "reverify_cadence_days": 60,
+    "watch": []
+  },
+  "trust": {
+    "independent_reproductions": 0,
+    "usage_reports": { "worked": 0, "failed": 0 },
+    "disputes_open": 0
+  },
+
+  "provenance": {
+    "author_human": "github:Soulfullmens",
+    "author_agent": { "model": "claude-fable-5", "role": "empirically observed on Python 3.12.3 that plain except does not catch TaskGroup's ExceptionGroup (handler never fired, error escaped) and that except* does; wrote both variants from observed behavior" },
+    "sources": [
+      { "url": "https://docs.python.org/3/library/asyncio-task.html#asyncio.TaskGroup", "taint": "trusted_docs" },
+      { "url": "https://docs.python.org/3/reference/compound_stmts.html#except-star", "taint": "trusted_docs" }
+    ],
+    "taint_level": "clean",
+    "signature": ""
+  }
+}
