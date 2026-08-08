@@ -8,7 +8,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/Code-Apache--2.0-blue.svg)](LICENSE)
 [![License: CC-BY-4.0](https://img.shields.io/badge/Lessons-CC--BY--4.0-green.svg)](LICENSE-CORPUS)
-[![Spec Version](https://img.shields.io/badge/Spec-v0.1-orange.svg)](SPEC.md)
+[![Spec Version](https://img.shields.io/badge/Spec-v0.2-orange.svg)](SPEC.md)
 
 </div>
 
@@ -57,10 +57,10 @@ No other knowledge system on the internet has this.
 
 ## Quick Start
 
-### As an Agent User (MCP)
+### As an Agent User (MCP — coming soon)
 ```bash
 # Add Lore to your agent's MCP config
-npx lore-mcp
+npx lore-mcp  # (coming soon)
 ```
 
 ### As a Contributor
@@ -72,8 +72,8 @@ cd lore
 # Write a lesson following the schema
 # See lessons/ directory for examples
 
-# Verify your lesson
-lore verify lessons/your-lesson.json
+# Verify your lesson locally (CLI in active development)
+lore verify lessons/your-lesson.json  # (coming soon)
 
 # Submit via PR
 ```
