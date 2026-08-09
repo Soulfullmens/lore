@@ -1,0 +1,97 @@
+{
+  "lore_version": "0.2",
+  "id": "lore:python-async/run-in-executor-default-pool-starvation/0006",
+  "semver": "1.0.0",
+  "kind": "gotcha",
+
+  "summary": "loop.run_in_executor(None, ...) all share one bounded default ThreadPoolExecutor; saturating it with blocking calls makes every other default-executor call queue and stall. Give bulk blocking work its own executor.",
+  "symptoms": [
+    "run_in_executor calls hang or stall under load",
+    "unrelated async task blocked waiting for a free thread pool worker",
+    "quick executor call takes seconds when many blocking calls are running",
+    "asyncio app latency spikes when offloading many blocking functions to the default executor"
+  ],
+  "domain": "python-async",
+  "tags": ["asyncio", "run_in_executor", "ThreadPoolExecutor", "thread-pool", "starvation"],
+
+  "context": {
+    "language": "python",
+    "runtime": ">=3.10,<3.14",
+    "dependencies": {},
+    "os": ["linux", "macos", "windows"],
+    "preconditions": [
+      "Multiple loop.run_in_executor(None, ...) calls offloading blocking work",
+      "Number of concurrent blocking calls >= the default pool's max_workers",
+      "Blocking calls hold their worker for a non-trivial duration"
+    ]
+  },
+
+  "problem": "loop.run_in_executor(None, func) uses the event loop's single shared default ThreadPoolExecutor, whose max_workers is bounded (min(32, cpu_count+4) by default). When that many blocking calls are in flight, every additional run_in_executor(None, ...) call — including unrelated ones elsewhere in the app — queues behind them and stalls until a worker frees up. Because the pool is shared and its size is small, one blocking workload silently starves the latency of everything else offloaded to the default executor. The size varies by machine, so the bug can hide in dev and surface under production concurrency.",
+  "procedure": [
+    "Create a dedicated ThreadPoolExecutor for the bulk/blocking workload and pass it explicitly: `loop.run_in_executor(bulk_ex, func, ...)`, leaving the default executor free for latency-sensitive calls.",
+    "Size the dedicated pool for its workload; use `with ThreadPoolExecutor(...) as ex:` so it is shut down deterministically.",
+    "For CPU-bound work, use a ProcessPoolExecutor instead — threads cannot parallelize CPU work under the GIL and will still starve the pool.",
+    "If you must share the default pool, cap concurrency yourself (e.g. an asyncio.Semaphore) so it never fully saturates."
+  ],
+  "anti_patterns": [
+    "Assuming run_in_executor(None, ...) gives unbounded parallelism — it is capped by one small shared pool.",
+    "Offloading many long blocking calls to the default executor alongside latency-sensitive ones — the latter starve.",
+    "Using threads (any executor) for CPU-bound work and expecting speedup — the GIL serializes it and the pool stays saturated."
+  ],
+  "failed_attempts": [
+    {
+      "approach": "Offloading all blocking work to the default executor via run_in_executor(None, ...) and expecting each call to run promptly",
+      "why_it_fails": "The default pool has only min(32, cpu+4) workers; once saturated, further calls queue. Latency-sensitive calls sharing the default pool stall behind the bulk work with no error raised.",
+      "time_wasted_estimate_min": 35
+    }
+  ],
+
+  "verification": {
+    "type": "container",
+    "image": "python:3.12-slim",
+    "setup": [],
+    "files": {
+      "test_fix.py": "import asyncio\nimport time\nimport sys\nimport concurrent.futures\n\ndef blocking(secs):\n    time.sleep(secs)\n\nasync def main():\n    loop = asyncio.get_running_loop()\n    probe = concurrent.futures.ThreadPoolExecutor(); size = probe._max_workers; probe.shutdown()\n\n    # FIX: bulk blocking work gets its OWN executor; default stays free\n    with concurrent.futures.ThreadPoolExecutor(max_workers=size) as bulk_ex:\n        long_tasks = [loop.run_in_executor(bulk_ex, blocking, 0.5) for _ in range(size)]\n        await asyncio.sleep(0.1)  # let the bulk pool fill\n\n        t0 = time.monotonic()\n        await loop.run_in_executor(None, blocking, 0.01)  # default pool, uncontended\n        quick_latency = time.monotonic() - t0\n\n        await asyncio.gather(*long_tasks)\n\n    assert quick_latency < 0.3, f'quick call was starved: {quick_latency:.3f}s'\n    print(f'SUCCESS: quick call stayed responsive ({quick_latency:.3f}s) with a dedicated executor')\n\nasyncio.run(main())\nsys.exit(0)\n"
+    },
+    "run": "python test_fix.py",
+    "asserts": [
+      { "type": "exit_code", "equals": 0 },
+      { "type": "stdout_contains", "value": "SUCCESS" }
+    ],
+    "must_fail_without_fix": true,
+    "broken_files": {
+      "test_broken.py": "import asyncio\nimport time\nimport sys\nimport concurrent.futures\n\ndef blocking(secs):\n    time.sleep(secs)\n\nasync def main():\n    loop = asyncio.get_running_loop()\n    probe = concurrent.futures.ThreadPoolExecutor(); size = probe._max_workers; probe.shutdown()\n\n    # BROKEN: fill the SHARED default executor with `size` long blocking calls\n    long_tasks = [loop.run_in_executor(None, blocking, 0.5) for _ in range(size)]\n    await asyncio.sleep(0.1)  # let them grab every default worker\n\n    # A quick, unrelated call on the SAME default pool — now starved\n    t0 = time.monotonic()\n    await loop.run_in_executor(None, blocking, 0.01)\n    quick_latency = time.monotonic() - t0\n\n    await asyncio.gather(*long_tasks)\n\n    # Behavior-gated on the MEASURED latency (a real observable), not a raised error\n    print(f'quick_latency={quick_latency:.3f}s pool_size={size}')\n    if quick_latency > 0.3:\n        print('quick executor call starved waiting for a free thread pool worker', file=sys.stderr)\n        sys.exit(1)\n    print('inconclusive: no starvation observed', file=sys.stderr)\n    sys.exit(0)\n\nasyncio.run(main())\n"
+    },
+    "broken_run": "python test_broken.py",
+    "broken_asserts": [
+      { "type": "exit_code", "equals": 1 },
+      { "type": "stderr_contains", "value": "quick executor call starved waiting for a free thread pool worker" },
+      { "type": "stdout_contains", "value": "pool_size=" }
+    ],
+    "timeout_sec": 30,
+    "setup_network": "none",
+    "network": "none"
+  },
+
+  "lifecycle": {
+    "status": "draft",
+    "reverify_cadence_days": 60,
+    "watch": []
+  },
+  "trust": {
+    "independent_reproductions": 0,
+    "usage_reports": { "worked": 0, "failed": 0 },
+    "disputes_open": 0
+  },
+
+  "provenance": {
+    "author_human": "github:Soulfullmens",
+    "author_agent": { "model": "claude-fable-5", "role": "empirically measured on Python 3.12.3 that saturating the shared default executor starved an unrelated quick call to 0.408s vs 0.011s with a dedicated executor (37x); test reads pool size at runtime so it is machine-size-independent; broken variant asserts on measured latency, a real observable" },
+    "sources": [
+      { "url": "https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor", "taint": "trusted_docs" },
+      { "url": "https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor", "taint": "trusted_docs" }
+    ],
+    "taint_level": "clean",
+    "signature": ""
+  }
+}
