@@ -163,10 +163,10 @@ def main():
         lesson_path = next(lessons_dir.glob(f"*{seq}.json"))
         lesson = json.loads(lesson_path.read_text(encoding="utf-8"))
 
-        # Load realistic snippet (NOT test_broken.py — hand-adapted, giveaways stripped)
-        snippet_path = bugs_dir / f"bug_{seq}_snippet.py"
+        # Load leak-free buggy file (agent sees this — no measurement prints)
+        snippet_path = bugs_dir / f"bug_{seq}_buggy.py"
         if not snippet_path.exists():
-            print(f"⚠️  No snippet for bug {seq} at {snippet_path} — skipping")
+            print(f"⚠️  No buggy file for bug {seq} at {snippet_path} — skipping")
             continue
         buggy_code = snippet_path.read_text(encoding="utf-8")
 

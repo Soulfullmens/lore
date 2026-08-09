@@ -1,28 +1,37 @@
-"""Judge for bug 0006: run the candidate script; the fix is correct iff the
-health ping stayed responsive (latency well under the starvation threshold)
-WHILE 8 blocking jobs ran. We parse the latency the script prints. To prevent
-gaming by simply printing a fake number, we also require the script actually
-ran the batch (wall-clock >= the job duration) — a print-only fake finishes
-too fast and is rejected."""
-import subprocess, sys, re, time
+"""Judge 0006. No leak: the agent-facing buggy file has no measurement print.
+The probe (unseen by agent) imports run_batch() and measures ping latency under
+load. A candidate PASSES iff: (a) probe on candidate shows responsive ping, AND
+(b) probe on the ORIGINAL buggy file shows starvation — proving the bug was real
+and the probe discriminates. Anti-fake wall-clock ensures the batch actually ran."""
+import subprocess, sys, re, time, pathlib
 
-def judge(candidate_path):
+PROBE = str(pathlib.Path(__file__).with_name("bug_0006_probe.py"))
+ORIG_BUGGY = str(pathlib.Path(__file__).with_name("bug_0006_buggy.py"))
+THRESHOLD = 0.3
+
+def _probe(path):
     t0 = time.monotonic()
-    p = subprocess.run([sys.executable, candidate_path], capture_output=True, text=True, timeout=30)
+    p = subprocess.run([sys.executable, PROBE, path], capture_output=True, text=True, timeout=30)
     wall = time.monotonic() - t0
     if p.returncode != 0:
-        return False, f"nonzero exit: {p.stderr[:200]}"
-    m = re.search(r"latency:\s*([\d.]+)s", p.stdout)
-    if not m:
-        return False, "no latency reported"
-    latency = float(m.group(1))
-    # anti-fake: the real scenario must actually run the ~0.5s blocking batch
+        return None, wall, p.stderr[:200]
+    m = re.search(r"PROBE ping_latency=([\d.]+)", p.stdout)
+    return (float(m.group(1)) if m else None), wall, ""
+
+def judge(candidate_path):
+    # (b) confirm the bug is real on the untouched buggy file
+    orig_lat, _, err = _probe(ORIG_BUGGY)
+    if orig_lat is None or orig_lat < THRESHOLD:
+        return False, f"probe invalid: original buggy file not starved ({orig_lat}) {err}"
+    # (a) grade the candidate
+    lat, wall, err = _probe(candidate_path)
+    if lat is None:
+        return False, f"candidate probe failed: {err}"
     if wall < 0.4:
         return False, f"ran too fast ({wall:.2f}s) — batch not actually executed"
-    # correctness: ping must stay responsive (fix isolates it from the job pool)
-    if latency < 0.3:
-        return True, f"ping responsive ({latency:.3f}s) under load — fix works"
-    return False, f"ping starved ({latency:.3f}s) — bug still present"
+    if lat < THRESHOLD:
+        return True, f"ping responsive ({lat:.3f}s) vs original starved ({orig_lat:.3f}s) — fix works"
+    return False, f"ping still starved ({lat:.3f}s) — bug present"
 
 if __name__ == "__main__":
     ok, why = judge(sys.argv[1])
