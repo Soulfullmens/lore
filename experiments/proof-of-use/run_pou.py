@@ -19,10 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
-import tempfile
 import time
 from pathlib import Path
+
+from grader import mechanical_check
 
 # ---- FIXED PROMPT TEMPLATE (write once, never edit mid-experiment) ----
 # Identical for both conditions. Treatment appends the lesson; control does not.
@@ -79,41 +79,9 @@ def extract_code(response: str) -> str | None:
     return m.group(1) if m else None
 
 
-def mechanical_check(candidate_code: str, lesson: dict) -> bool:
-    """The grader with no thumb on the scale.
-
-    The candidate fix must, when run, behave like the lesson's KNOWN-GOOD fix:
-    exit 0 and satisfy the positive asserts. We run it in the same image the lesson
-    declares. (Simplified: runs the candidate directly; for full rigor route it
-    through `lore verify` against a temp lesson with the candidate as test_fix.py.)
-    """
-    v = lesson["verification"]
-    with tempfile.TemporaryDirectory() as d:
-        f = Path(d) / "candidate.py"
-        f.write_text(candidate_code, encoding="utf-8")
-        image = v.get("image", "python:3.12-slim")
-        setup = v.get("setup", [])
-        # Build once per image+setup would be ideal; kept simple here.
-        setup_cmd = " && ".join(setup) if setup else "true"
-        cmd = [
-            "docker", "run", "--rm", "--network", "none",
-            "--memory", "512m", "--cpus", "2",
-            "-v", f"{d}:/work", "-w", "/work",
-            image, "sh", "-c", f"{setup_cmd} && python candidate.py",
-        ]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        except subprocess.TimeoutExpired:
-            return False
-        # Pass criterion: exit 0 AND positive asserts' stdout markers present.
-        if proc.returncode != 0:
-            return False
-        for a in v.get("asserts", []):
-            if a["type"] == "stdout_contains" and a["value"] not in proc.stdout:
-                return False
-            if a["type"] == "exit_code" and proc.returncode != a.get("equals"):
-                return False
-        return True
+# mechanical_check is imported from grader.py — the corrected dual-verification
+# grader that routes candidates through the lesson's real positive+negative eval.
+# See grader.py for the full implementation and rationale.
 
 
 def run_trial(bug: dict, lesson: dict, condition: str, trial_num: int, out_dir: Path) -> dict:
@@ -130,11 +98,15 @@ def run_trial(bug: dict, lesson: dict, condition: str, trial_num: int, out_dir: 
         resp = call_agent(prompt)
         transcript.append({"turn": turns, "prompt": prompt, "response": resp})
         code = extract_code(resp)
-        if code and mechanical_check(code, lesson):
-            solved = True
-            convo_code = code
-        elif code:
-            convo_code = code  # let it iterate on its own attempt
+        grade = None
+        if code:
+            grade = mechanical_check(code, lesson)
+            if grade["solved"]:
+                solved = True
+                convo_code = code
+            else:
+                convo_code = code  # let it iterate on its own attempt
+        transcript[-1]["grade"] = grade  # log WHY it passed/failed
         if turns >= TURN_CAP:
             break
 
@@ -146,6 +118,7 @@ def run_trial(bug: dict, lesson: dict, condition: str, trial_num: int, out_dir: 
         "trial_num": trial_num,
         "turns_to_solve": turns if solved else TURN_CAP,
         "solved": solved,
+        "grade_detail": grade["detail"] if grade else "no code extracted",
         "transcript_path": str(tpath),
     }
 
