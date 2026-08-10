@@ -22,6 +22,7 @@
 | `0002` | `asyncio.gather` detached siblings | 3 / 3 | 0 / 3 | **Degradation / Over-prescriptive Harm** |
 | `0005` | Async generator `aclose` cleanup | 3 / 3 | 3 / 3 | **Null / Model Redundancy** |
 | `0006` | Default `run_in_executor` starvation | 0 / 3 | 0 / 3 | **Instrument Failure (Hardware concurrency capacity)** |
+| `probe` | `asyncio.subprocess` pipe buffer deadlock | 1 / 1 (cold) | — | **Null / Model Redundancy** (Model supplied `communicate()` cold) |
 
 ---
 
@@ -32,9 +33,9 @@
    - With the lesson (which emphasized `TaskGroup` as a modern best practice), the model forced `TaskGroup`, which cancels siblings when one task fails. This caused sibling outcomes to be lost, failing the specific completion requirement.
    - **Takeaway:** Lessons MUST be strictly conditional ("use X ONLY when Y") rather than prescriptively recommending a "best practice" that overrides correct context-sensitive model defaults.
 
-2. **`0005` — Redundancy on Well-Known Patterns**:
-   - Both control and treatment solved in 1 turn.
-   - **Takeaway:** For standard library gotchas heavily present in training sets, in-context lesson injection provides zero marginal lift. Corpus value relies on obscure, version-specific, or poorly documented gotchas.
+2. **Standard-Library Gotchas (`0005`, `pipe_deadlock`) Are Memorized**:
+   - `gemini-3.1-flash-lite` correctly diagnosed and fixed both `aclose` generator cleanup and 1MB `asyncio.subprocess` pipe buffer deadlocks cold without assistance.
+   - **Takeaway:** For standard library gotchas heavily present in training sets, in-context lesson injection provides zero marginal lift. Lore's true value proposition relies on obscure, version-specific, or rapidly evolving package gotchas (e.g. Pydantic v2, aiohttp 3.9+, FastMCP).
 
 3. **`0006` — Instrument Failure (Dual-Check Verification Worked)**:
    - On multi-core host hardware, the default thread pool size (`min(32, cpu_count+4)`) was large enough that 8 blocking calls did not starve the ping call (`probe invalid`).
