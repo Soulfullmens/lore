@@ -55,17 +55,7 @@ def build_prompt(symptom: str, buggy_code: str, lesson_md: str | None) -> str:
     return PROMPT_TEMPLATE.format(symptom=symptom, buggy_code=buggy_code, lesson_block=lesson_block)
 
 
-def call_agent(prompt: str) -> str:
-    """FILL THIS IN with your real agent call (Anthropic API, Claude Code, etc.).
-
-    Must return the agent's raw text response. Keep model + temperature IDENTICAL
-    across control and treatment — that's the controlled variable discipline.
-
-    Placeholder raises so you can't accidentally run a fake experiment.
-    """
-    raise NotImplementedError(
-        "Wire call_agent() to your API. Keep model/temperature identical for both conditions."
-    )
+from gemini_agent import call_agent  # noqa: E402 — wired to Gemini at temp=0
 
 
 def extract_code(response: str) -> str | None:
