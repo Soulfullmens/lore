@@ -61,19 +61,30 @@ difference an agent sees is whether the lesson markdown is appended.
 
 ---
 
-## 3. Predictions (WRITE BEFORE RUNNING — then stop editing)
+## 3. Predictions (LOCKED — written 2026-08-11 before any trials)
 
-State a directional, falsifiable prediction. Example scaffold — replace with your real call:
+- **Primary metric:** turns-to-correct-fix (agent messages until the behavioral judge
+  passes; cap at 6; a run that never passes = capped at 6 + marked UNSOLVED).
+- **Pilot scope:** 3 bugs (0002 gather, 0005 aclose, 0006 executor), 3 trials each,
+  18 total runs.
+- **Prediction:** Treatment (with lesson) solves all 3 bugs in ≤2 turns on ≥2 of 3
+  trials per bug (≥6 of 9 treatment trials solved in ≤2 turns). Control (no lesson)
+  either fails to solve at least 1 of the 3 bugs entirely, or requires ≥3 turns on
+  ≥2 bugs. Bug 0005 (aclose deferral) is the most likely control failure — it's the
+  most obscure of the three.
+- **Null hypothesis:** Lesson access makes no difference to solve rate or turns-to-solve
+  across the 3 pilot bugs.
+- **What result would make me CONCLUDE LORE DOESN'T HELP:** If control solves all 3
+  bugs in ≤2 turns on ≥2 of 3 trials per bug (same bar as the treatment prediction
+  above), then the model already knows these fixes from training data and the lessons
+  are redundant for these bugs. That's a real finding: it means Lore's value requires
+  targeting genuinely obscure, version-specific traps the model doesn't already know,
+  and the corpus needs to pivot toward those before scaling.
 
-- Primary metric: **turns-to-correct-fix** (agent messages until the success check passes;
-  cap at 6; a run that never passes = capped at 6 + marked UNSOLVED).
-- Prediction: _______ (e.g. "treatment solves in ≤2 turns on ≥4 of 6 bugs; control needs
-  ≥3 turns or fails on ≥3 of 6"). Be specific enough that a result could contradict it.
-- Null hypothesis you're trying to reject: "lesson access makes no difference to turns or
-  solve rate."
-- What result would make you CONCLUDE LORE DOESN'T HELP (pre-commit this!):
-  _______ (e.g. "if control solves ≥5 of 6 in ≤2 turns, the lesson is redundant with the
-  model's own knowledge for these bugs").
+> [!IMPORTANT]
+> **PRE-REGISTRATION LOCK.** These predictions were written before any trial ran.
+> Do not edit. If the design needs revision, create PROTOCOL-v0.2.md with a new
+> prediction — don't silently move these goalposts.
 
 The last line is the most important in the document. If you can't name a result that would
 disappoint you, you're building a demo.
