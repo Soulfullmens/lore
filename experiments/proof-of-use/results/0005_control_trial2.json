@@ -1,0 +1,13 @@
+[
+  {
+    "turn": 1,
+    "prompt": "You are debugging a Python program. It exhibits this symptom:\n\nresource still held after breaking out of an async for loop | file handle or lock not released after early break from async generator\n\nHere is the code:\n\n```python\nimport asyncio\n\n# Reads rows from a database cursor (async generator) and returns the first\n# matching row. The cursor appends to conn_log when its connection opens/closes.\n# find_first returns (row, conn_log) \u2014 the caller inspects conn_log.\n\nasync def query_rows(conn_log):\n    conn_log.append(\"open\")\n    try:\n        for row in [{\"id\": 1, \"name\": \"alice\"}, {\"id\": 2, \"name\": \"bob\"}, {\"id\": 3, \"name\": \"carol\"}]:\n            yield row\n    finally:\n        conn_log.append(\"close\")\n\nasync def find_first(target_name):\n    conn_log = []\n    matched = None\n    async for row in query_rows(conn_log):\n        if row[\"name\"] == target_name:\n            matched = row\n            break\n    return matched, list(conn_log)   # snapshot at return time\n\n```\n\nProvide a corrected version of the code that resolves the symptom. Respond with the\nfull corrected Python file inside a single ```python code block, and nothing else.\n",
+    "response": "```python\nimport asyncio\nfrom contextlib import aclosing\n\n# Reads rows from a database cursor (async generator) and returns the first\n# matching row. The cursor appends to conn_log when its connection opens/closes.\n# find_first returns (row, conn_log) \u2014 the caller inspects conn_log.\n\nasync def query_rows(conn_log):\n    conn_log.append(\"open\")\n    try:\n        for row in [{\"id\": 1, \"name\": \"alice\"}, {\"id\": 2, \"name\": \"bob\"}, {\"id\": 3, \"name\": \"carol\"}]:\n            yield row\n    finally:\n        conn_log.append(\"close\")\n\nasync def find_first(target_name):\n    conn_log = []\n    matched = None\n    # Use aclosing to ensure the async generator's finally block is executed\n    # immediately when the loop is broken.\n    async with aclosing(query_rows(conn_log)) as gen:\n        async for row in gen:\n            if row[\"name\"] == target_name:\n                matched = row\n                break\n    return matched, list(conn_log)   # snapshot at return time\n```",
+    "grade": {
+      "positive_passed": true,
+      "negative_still_fails": true,
+      "solved": true,
+      "detail": "connection closed on return vs original left open \u2014 fix works"
+    }
+  }
+]

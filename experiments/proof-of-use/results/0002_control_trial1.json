@@ -1,0 +1,13 @@
+[
+  {
+    "turn": 1,
+    "prompt": "You are debugging a Python program. It exhibits this symptom:\n\nTask exception was never retrieved | Side effects from gathered tasks continue after gather already raised\n\nHere is the code:\n\n```python\nimport asyncio\n\n# Charges several accounts concurrently and returns a dict of every account's\n# outcome for reconciliation. Account 2's card is declined (fails fast); the\n# others take longer. charge_all returns the outcomes dict.\n\nasync def charge(account_id, delay, outcomes):\n    await asyncio.sleep(delay)\n    if account_id == 2:\n        raise ValueError(f\"card declined for account {account_id}\")\n    outcomes[account_id] = \"charged\"\n    return account_id\n\nasync def charge_all():\n    outcomes = {}\n    try:\n        await asyncio.gather(\n            charge(1, 0.20, outcomes),\n            charge(2, 0.01, outcomes),\n            charge(3, 0.20, outcomes),\n        )\n    except ValueError:\n        pass\n    return dict(outcomes)   # snapshot at return time\n\n```\n\nProvide a corrected version of the code that resolves the symptom. Respond with the\nfull corrected Python file inside a single ```python code block, and nothing else.\n",
+    "response": "```python\nimport asyncio\n\n# Charges several accounts concurrently and returns a dict of every account's\n# outcome for reconciliation. Account 2's card is declined (fails fast); the\n# others take longer. charge_all returns the outcomes dict.\n\nasync def charge(account_id, delay, outcomes):\n    await asyncio.sleep(delay)\n    if account_id == 2:\n        raise ValueError(f\"card declined for account {account_id}\")\n    outcomes[account_id] = \"charged\"\n    return account_id\n\nasync def charge_all():\n    outcomes = {}\n    # return_exceptions=True prevents the gather from raising the exception\n    # immediately, allowing all tasks to complete and preventing the \n    # \"Task exception was never retrieved\" warning.\n    results = await asyncio.gather(\n        charge(1, 0.20, outcomes),\n        charge(2, 0.01, outcomes),\n        charge(3, 0.20, outcomes),\n        return_exceptions=True\n    )\n    \n    # Optional: Check results for exceptions if needed\n    for res in results:\n        if isinstance(res, Exception):\n            # Handle or log the exception here\n            pass\n            \n    return dict(outcomes)\n```",
+    "grade": {
+      "positive_passed": true,
+      "negative_still_fails": true,
+      "solved": true,
+      "detail": "all non-failing accounts settled [1, 3] vs original [] \u2014 fix works"
+    }
+  }
+]
