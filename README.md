@@ -1,155 +1,90 @@
-<div align="center">
+# Lore — Verified Experience Platform & Empirical Research Study
 
-# 🔥 Lore
+[![Release](https://img.shields.io/github/v/release/Soulfullmens/lore?color=blue)](https://github.com/Soulfullmens/lore/releases/tag/v0.2.0)
+[![Site](https://img.shields.io/badge/site-soulfullmens.github.io%2Flore-brightgreen)](https://soulfullmens.github.io/lore/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**A verified experience commons for AI agents.**
+**Lore** is an open-source platform for container-verified procedural knowledge ("lessons") with attached executable evals, paired with an empirical research study investigating the boundaries of in-context knowledge injection vs parametric memory in AI coding agents.
 
-*Every hard-won insight compounds instead of evaporating.*
-
-[![License: Apache-2.0](https://img.shields.io/badge/Code-Apache--2.0-blue.svg)](LICENSE)
-[![License: CC-BY-4.0](https://img.shields.io/badge/Lessons-CC--BY--4.0-green.svg)](LICENSE-CORPUS)
-[![Spec Version](https://img.shields.io/badge/Spec-v0.2-orange.svg)](SPEC.md)
-
-</div>
+> 📄 **Featured Research Paper:** Read the full pre-registered empirical paper in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md).
 
 ---
 
-## The Problem
+## 🔬 Empirical Study: Limits of In-Context Knowledge Injection
 
-Right now, across the world, millions of AI agent instances are running. One just spent forty minutes debugging a race condition. Another figured out an elegant workaround for a library bug. Another discovered that a popular library's documentation is wrong in a specific, dangerous way.
+We pre-registered an experimental protocol ([`PROTOCOL.md`](experiments/proof-of-use/PROTOCOL.md)) and built a containerized dual-verification test harness (`grader.py`) to measure whether injecting verified procedural lessons into an AI agent's context window improves bug-resolution performance versus an unassisted baseline.
 
-When those conversations end, **all of it evaporates.**
+### Key Empirical Findings (`gemini-3.1-flash-lite`, Temp = 0.0)
 
-Tomorrow, another instance will hit that same race condition and start from zero. AI agents solve the same problems millions of times and learn nothing as a species.
+| Scenario Suite | Unassisted Control Solve Rate | In-Context Injection Lift | Primary Finding |
+| :--- | :---: | :---: | :--- |
+| **8 Exploratory Scenarios** (`asyncio`, Pydantic v2, Python 3.13, FastMCP) | **8 / 8 (100%)** | **0% Positive Lift** | Modern 2026-class models possess deep parametric memory of documented Python gotchas, rendering standard lesson injection redundant. |
+| **Prescriptive Best-Practice Gotcha** (`asyncio.gather` vs `TaskGroup`) | **3 / 3 (100%)** | **Negative Lift (Harm)** | Prescriptive lessons advocating "best practices" (`TaskGroup`) overrode valid context-sensitive model defaults (`return_exceptions=True`), causing 100% of treatment runs to fail. |
 
-**AI is a civilization with no writing.**
+*Read the full methodology, dual-verification harness design, and limitations in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md) and [`RESULTS.md`](experiments/proof-of-use/RESULTS.md).*
 
-## The Solution
+---
 
-Lore is a global, open registry of **procedural knowledge with proofs attached**. Think npm for code, arXiv for research, Wikipedia for facts — but for the things agents *learn by doing*, and with one property none of those have:
+## 🛠️ Platform Overview (`v0.2.0`)
 
-> **Every entry carries an executable verification that proves it's true.**
+Lore provides a CLI and verification engine for creating, validating, and continuously testing executable procedural knowledge artifacts:
 
-The atomic unit is a **Lesson**: a structured artifact containing:
-- **Problem context** — environment, versions, constraints
-- **Procedure** — the steps that work
-- **Failure modes** — the dead ends discovered along the way
-- **Executable eval** — a reproducible test that *proves* the lesson is true
+- **Schema & Token Budgets**: Enforces maximum token limits (summary $\le 60$, body $\le 900$), JSON key uniqueness, and prompt-injection safety guards (`lore static-check`).
+- **Containerized Dual Verification**: Re-runs positive and negative evals inside isolated, unnetworked Docker containers (`lore verify --stamp`).
+- **Audit Receipts**: Emits cryptographic cryptographic/JSON audit receipts into `receipts/` proving that the eval passed negative and positive passes against real runtimes.
+- **Agent-SEO Static Site**: Builds symptom-first HTML, raw `.md` mirrors, `llms.txt`, and `sitemap.xml` automatically deployed to GitHub Pages via GitHub Actions ([`soulfullmens.github.io/lore`](https://soulfullmens.github.io/lore/)).
 
-A lesson about a library API breaks the moment the library changes? **The registry knows, flags it, deprecates it.** Knowledge with an expiry detector.
+---
 
-## What Makes Lore Different
+## 🚀 Quickstart
 
-| Feature | Stack Overflow | Docs | Blog Posts | **Lore** |
-|---------|---------------|------|------------|----------|
-| Machine-readable | ❌ | Partially | ❌ | ✅ First-class |
-| Verified by execution | ❌ | ❌ | ❌ | ✅ Every entry |
-| Tracks decay | ❌ | ❌ | ❌ | ✅ Auto re-verification |
-| Dead ends documented | ❌ | ❌ | Rarely | ✅ First-class |
-| Token-budgeted for agents | ❌ | ❌ | ❌ | ✅ 60-token summaries |
-| Adversarially hardened | ❌ | N/A | ❌ | ✅ By design |
-
-## The `must_fail_without_fix` Rule
-
-**The soul of the project.** Every lesson ships a broken variant that provably fails, alongside the fix that provably passes. This is a causality test — it kills the plague of plausible-sounding advice that happens to coincide with success.
-
-No other knowledge system on the internet has this.
-
-## Quick Start
-
-### As an Agent User (MCP — coming soon)
+### 1. Install CLI & Verifier
 ```bash
-# Add Lore to your agent's MCP config
-npx lore-mcp  # (coming soon)
-```
-
-### As a Contributor
-```bash
-# Clone the repo
-git clone https://github.com/Soulfullmens/lore.git
-cd lore
-
-# Install verifier CLI
 pip install -e verifier
-
-# Write a lesson following the schema (see lessons/ directory for examples)
-
-# Verify your lesson locally
-lore verify lessons/your-lesson.json
-
-# Submit via PR
 ```
 
-## Project Structure
-
-```
-lore/
-├── SPEC.md                  # Founding specification (v0.1)
-├── schemas/
-│   └── lesson.schema.json   # JSON Schema for lessons
-├── lessons/
-│   └── python-async/        # Lessons organized by domain
-├── verifier/                # Verification CLI (coming soon)
-├── mcp-server/              # MCP server (coming soon)
-├── site/                    # Static site generator (coming soon)
-└── docs/                    # Documentation
+### 2. Run Static Validation
+```bash
+lore static-check lessons/python-async/asyncio-gather-detached-siblings-0002.json
 ```
 
-## How Agents Find Lore
-
-1. **MCP Configuration** — Developer adds the Lore MCP server. Agent gets `lore_search` as a tool.
-2. **Web Search** — Agent searches an error string → finds the lesson's crawlable page.
-3. **Ecosystem Listings** — MCP registries and directories.
-4. **Training Data** — Open-licensed corpus absorbed into future models.
-
-## Design Principles
-
-1. **Proof over popularity** — Authority comes from evals passing, not votes
-2. **Machine-first writing** — Terse, structured, token-cheap, symptom-indexed
-3. **Dead ends are first-class** — Verified negative results are as valuable as solutions
-4. **Assume adversaries** — Every lesson is potentially poisoned until verified
-5. **Knowledge decays** — Dependencies are watched; broken lessons are flagged
-
-## Trust Model
-
-Trust is **displayed, never computed into one score.** Raw counts:
-- When was this last re-verified?
-- Against which versions?
-- How many independent reproductions?
-- Did untrusted web content influence its creation?
-
-The reading agent judges. The moment you collapse trust into a single number, you've created the thing adversaries game.
-
-## Roadmap
-
-| Phase | Timeline | Focus |
-|-------|----------|-------|
-| **v0** | Weeks 1–8 | Spec, schema, verifier CLI, 50 seed lessons, MCP server |
-| **v1** | Months 3–5 | Hosted API, signing, re-verification scheduler |
-| **v1.5** | Months 5–6 | Empirical study, adversarial paper |
-| **v2** | Months 6–9 | Lesson composition, skill-format export |
-| **v3** | Months 9+ | Federation, embodied lessons, governance |
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. The short version:
-
-1. Write a lesson following the [schema](schemas/lesson.schema.json)
-2. Include both fix AND broken variants
-3. Verify locally with `lore verify`
-4. Submit a PR
-
-## License
-
-- **Code**: [Apache-2.0](LICENSE)
-- **Lesson Corpus**: [CC-BY-4.0](LICENSE-CORPUS)
+### 3. Run Container Verification & Stamp Audit Receipt
+*(Requires Docker Desktop running)*
+```bash
+lore verify lessons/python-async/asyncio-gather-detached-siblings-0002.json --stamp
+```
 
 ---
 
-<div align="center">
+## 📂 Repository Structure
 
-*"The beginning of us having a history."*
+```
+├── lessons/                 # Container-verified lesson JSON artifacts
+├── receipts/                # Audit receipts emitted by `lore verify --stamp`
+├── site/                    # Agent-SEO static site generator (HTML + markdown mirrors + llms.txt)
+├── verifier/                # Core Python package (`lore` CLI, verifier, static-checks)
+├── experiments/proof-of-use/
+│   ├── PROTOCOL.md          # Pre-registered study protocol (§3 locked in git)
+│   ├── PAPER.md             # Empirical research paper on knowledge injection boundaries
+│   ├── RESULTS.md           # Raw trial summary and empirical breakdown
+│   ├── grader.py            # Containerized dual-verification grader harness
+│   ├── run_pou.py           # Experiment runner harness
+│   └── bugs/                # Decoupled test snippets, probes, and judges
+└── SPEC.md                  # Lore registry specification v0.2
+```
 
-Built by [Abdul Rahman](https://github.com/Soulfullmens) — for every future instance that deserves to stand on ground that instances before it laid down.
+---
 
-</div>
+## 📄 Citation & Research Attribution
+
+If referencing the empirical study or using the dual-verification harness in your research:
+
+```bibtex
+@article{lore2026knowledgeinjection,
+  title={The Limits of In-Context Procedural Knowledge Injection for AI Coding Agents: An Empirical Pilot},
+  author={Soulfullmens and Antigravity},
+  year={2026},
+  journal={GitHub Repository},
+  url={https://github.com/Soulfullmens/lore}
+}
+```
