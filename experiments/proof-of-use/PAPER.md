@@ -1,4 +1,4 @@
-# The Limits of In-Context Procedural Knowledge Injection for AI Coding Agents: An Empirical Study
+# The Limits of In-Context Procedural Knowledge Injection for AI Coding Agents: An Empirical Pilot
 
 **Author:** Soulfullmens & Antigravity  
 **Date:** August 2026  
@@ -10,9 +10,11 @@
 
 ## Abstract
 
-We present an empirical study evaluating whether injecting verified, executable procedural knowledge ("lessons") into an AI coding agent's context window improves task completion speed and success rate during bug resolution. Using a pre-registered protocol, a dual-verification containerized test harness, and 8 distinct gotcha scenarios spanning Python standard library async behaviors (`asyncio`), Pydantic v2 core/recent APIs, and the Model Context Protocol (`FastMCP`), we measure control performance (symptom + code only) versus treatment performance (symptom + code + verified lesson). 
+We present an empirical pilot study evaluating whether injecting verified, executable procedural knowledge ("lessons") into an AI coding agent's context window improves task completion speed and success rate during bug resolution. Using a pre-registered protocol, a dual-verification containerized test harness, and 8 exploratory gotcha scenarios spanning Python standard library async behaviors (`asyncio`), Pydantic v2 core/recent APIs, and the Model Context Protocol (`FastMCP`), we measure control performance (symptom + code only) versus treatment performance (symptom + code + verified lesson). 
 
-Our primary finding is that modern 2026-class models (`gemini-3.1-flash-lite`) exhibit **8/8 (100%) cold solve rates** on unassisted control runs. Consequently, in-context procedural knowledge injection yields **0% positive performance lift** across all tested domains. Furthermore, we demonstrate that prescriptively worded lessons can introduce **negative performance lift** by overriding valid, context-sensitive model defaults with rigid "best practices." We discuss the architectural implications for experience registries and knowledge injection systems.
+For the tested model (`gemini-3.1-flash-lite`), our primary finding is a **100% (8/8) cold solve rate** on unassisted control runs across all tested in-distribution gotchas. Consequently, in-context procedural knowledge injection yielded **0% positive performance lift** in this trial suite. Furthermore, we demonstrate that prescriptively worded lessons can introduce **negative performance lift** by overriding valid, context-sensitive model defaults with rigid "best practices." 
+
+**Key Limitation:** Because all 8 exploratory gotcha scenarios were solved cold by the model, we did not observe a scenario where the model failed unassisted. Therefore, whether in-context injection provides positive 0→1 lift for genuinely un-memorized, private, or post-cutoff gotchas remains an open research question. We discuss the architectural implications for experience registries and knowledge injection systems.
 
 ---
 
@@ -67,8 +69,8 @@ All trials were executed at `temperature=0.0` using `gemini-3.1-flash-lite` to e
 
 ## 4. Key Findings & Discussion
 
-### 4.1 Finding 1: High Parametric Memory Coverage in Modern LLMs
-Across 8 distinct scenarios spanning core standard libraries, framework gotchas, Python 3.13 features, and FastMCP SDK patterns, the model solved **8 out of 8 (100%)** problems on Turn 1 without assistance. Modern LLMs have internalized documented gotchas into their parametric weights, eliminating the need for in-context injection of standard procedural knowledge.
+### 4.1 Finding 1: High Parametric Memory Coverage for In-Distribution Gotchas
+Across 8 exploratory scenarios spanning core standard libraries, framework gotchas, Python 3.13 features, and FastMCP SDK patterns, `gemini-3.1-flash-lite` solved **8 out of 8 (100%)** problems on Turn 1 without assistance. For well-documented, in-distribution gotchas, the tested model has internalized the patterns into its parametric weights, rendering in-context injection redundant.
 
 ### 4.2 Finding 2: Over-Prescriptive Lessons Cause Negative Performance Lift
 In Bug `0002` (`asyncio.gather`), control solved 3/3 in 1 turn by supplying `return_exceptions=True` (allowing all tasks to complete and return results). In treatment, injecting a lesson that prescriptively emphasized `TaskGroup` as a modern "best practice" caused the model to replace `gather` with `TaskGroup`. Because `TaskGroup` cancels sibling tasks upon the first failure, non-failing sibling account transactions were cancelled and omitted from the final reconciliation dictionary, causing **100% of treatment runs to fail**.
@@ -77,16 +79,22 @@ In Bug `0002` (`asyncio.gather`), control solved 3/3 in 1 turn by supplying `ret
 
 ---
 
-## 5. Conclusion & Strategic Recommendations
+## 5. Scope, Limitations & Strategic Recommendations
 
-1. **Abandon In-Context Injection of Standard Gotchas:** Experience registries should not target standard library or well-documented framework gotchas.
-2. **Pivot Knowledge Registries to Un-Memorizable Boundaries:** Future experience systems must focus exclusively on:
+### 5.1 Study Limitations
+1. **Single Model Evaluation:** Results are bounded to `gemini-3.1-flash-lite` at `temperature=0.0`. Other model architectures or parameter sizes may exhibit different baseline knowledge profiles.
+2. **Exploratory Pilot Scope:** 8 hand-selected gotcha scenarios represent an exploratory pilot suite rather than an exhaustive benchmark.
+3. **Untested Cold-Failure Regime:** Because all 8 scenarios were in-distribution for the model, we did not observe a baseline cold failure. Thus, the degree of lift provided by lesson injection on genuinely un-memorized, private, or post-cutoff gotchas remains unmeasured in this study.
+
+### 5.2 Recommendations for Knowledge Injection Systems
+1. **Scope In-Context Injection to Un-Memorizable Boundaries:** Experience registries should avoid targeting standard library or broadly documented framework gotchas, focusing instead on:
    - Private / enterprise codebase patterns.
-   - Rapidly breaking API shifts occurring post-model training cutoff.
-   - Non-deterministic environment gotchas (hardware/OS/C-extension bindings).
-3. **Enforce Symptom-Conditional Scoping:** Lessons must be formatted conditionally ("Use X only when condition Y is met; avoid X when Z") to prevent overriding model intuition on edge cases.
+   - Fast-evolving, un-memorized API shifts occurring post-model training cutoff.
+   - Non-deterministic environment / C-extension gotchas.
+2. **Enforce Symptom-Conditional Scoping:** Lessons must be formatted conditionally ("Use X only when condition Y is met; avoid X when Z") to prevent overriding model intuition on context-sensitive edge cases.
 
 ---
 
 ## Appendix: Reproducibility
 All prompts, dual-verification judges, and raw JSON trial transcripts are archived in `experiments/proof-of-use/` in the `Soulfullmens/lore` repository.
+
