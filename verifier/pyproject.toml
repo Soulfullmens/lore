@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "lore-commons"
 version = "0.2.0"
 description = "A verified experience commons for AI agents — verification CLI and toolset."
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [
