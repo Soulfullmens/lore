@@ -16,7 +16,7 @@ def health_ping():
 
 async def run_batch():
     loop = asyncio.get_running_loop()
-    jobs = [loop.run_in_executor(None, process_job, i) for i in range(8)]
+    jobs = [loop.run_in_executor(None, process_job, i) for i in range(40)]
     await asyncio.sleep(0.1)
     start = time.monotonic()
     await loop.run_in_executor(None, health_ping)

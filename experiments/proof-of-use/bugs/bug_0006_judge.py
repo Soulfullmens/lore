@@ -13,8 +13,11 @@ def _probe(path):
     t0 = time.monotonic()
     p = subprocess.run([sys.executable, PROBE, path], capture_output=True, text=True, timeout=30)
     wall = time.monotonic() - t0
+    if p.returncode == 2:
+        m = re.search(r"PROBE candidate_error=(.*)", p.stderr)
+        return None, wall, "candidate_error " + (m.group(1).strip() if m else "unknown")
     if p.returncode != 0:
-        return None, wall, p.stderr[:200]
+        return None, wall, "probe_error (harness)"
     m = re.search(r"PROBE ping_latency=([\d.]+)", p.stdout)
     return (float(m.group(1)) if m else None), wall, ""
 
@@ -26,7 +29,7 @@ def judge(candidate_path):
     # (a) grade the candidate
     lat, wall, err = _probe(candidate_path)
     if lat is None:
-        return False, f"candidate probe failed: {err}"
+        return False, f"candidate failed: {err}"
     if wall < 0.4:
         return False, f"ran too fast ({wall:.2f}s) — batch not actually executed"
     if lat < THRESHOLD:

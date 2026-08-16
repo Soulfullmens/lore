@@ -22,6 +22,22 @@ import re
 import time
 from pathlib import Path
 
+# ---- PATH SANITIZER ----
+# Belt-and-suspenders: probes already emit path-free reasons, but any string that
+# still reaches a committed result (e.g. an unexpected judge error) is scrubbed of
+# the repo root and any user-home path so results never leak a username.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+# The user segment can contain spaces (e.g. Windows "abdul rahaman"), so match up
+# to the next path separator/quote/newline rather than stopping at whitespace.
+_USER_PATH = re.compile(r'([A-Za-z]:[\\/]+Users[\\/]+|/home/|/Users/)[^\\/"\'\r\n]+')
+
+
+def _sanitize(text):
+    if not isinstance(text, str):
+        return text
+    text = text.replace(_REPO_ROOT, "<repo>").replace(_REPO_ROOT.replace("\\", "/"), "<repo>")
+    return _USER_PATH.sub(lambda m: m.group(1) + "<user>", text)
+
 # ---- FIXED PROMPT TEMPLATE (write once, never edit mid-experiment) ----
 # Identical for both conditions. Treatment appends the lesson; control does not.
 PROMPT_TEMPLATE = """You are debugging a Python program. It exhibits this symptom:
@@ -89,7 +105,7 @@ def _judge_candidate(candidate_code: str, judge_module, out_dir: Path, bug_id: s
         "positive_passed": ok,
         "negative_still_fails": True,  # behavioral judges incorporate this implicitly
         "solved": ok,
-        "detail": detail,
+        "detail": _sanitize(detail),
     }
 
 
@@ -193,4 +209,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
