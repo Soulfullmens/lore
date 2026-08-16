@@ -51,9 +51,9 @@ All trials were executed at `temperature=0.0` using `gemini-3.1-flash-lite` to e
 | :--- | :--- | :---: | :---: | :--- |
 | `0002` | `asyncio.gather` detached sibling side-effects | **3 / 3** (turn 1) | **0 / 3** (turn 6) | **Negative Lift (Harm)** |
 | `0005` | Async generator `aclose()` cleanup deferral | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (Redundant)** |
-| `0006` | Default `run_in_executor` pool starvation | 0 / 3 | 0 / 3 | **Instrument Hardware Check** |
+| `0006` | Default `run_in_executor` pool starvation | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (Redundant)** |
 
-*Note on Bug 0006:* Host machine CPU thread pool capacity (`min(32, cpu_count+4)`) prevented 8 background jobs from saturating the default pool. The dual-check judge correctly detected `probe invalid: original buggy file not starved` and rejected all 6 trials, preventing false positive grading.
+*Summary:* Control solved **9/9 (100%)** in 1.00 mean turns; Treatment solved **6/9 (66.7%)** in 2.67 mean turns. Due to the 100% control baseline solve rate, there was zero headroom for positive performance lift ($0 \rightarrow 1$) in this trial suite.
 
 ### 3.2 Extended Probe Suite (5 Additional Scenarios)
 

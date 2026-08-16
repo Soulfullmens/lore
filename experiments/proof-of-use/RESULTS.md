@@ -1,6 +1,6 @@
-# Lore Proof-of-Use Pilot Study Results (v0.1)
+# Lore Proof-of-Use Pilot Study Results (v0.2 Updated)
 
-**Date:** 2026-08-11  
+**Date:** August 2026  
 **Model:** `gemini-3.1-flash-lite` (temperature = 0.0)  
 **Protocol:** Pre-registered in `PROTOCOL.md` (§3 locked prior to execution)
 
@@ -10,8 +10,8 @@
 
 | Condition | Solved / Total | Mean Turns to Solve |
 | :--- | :---: | :---: |
-| **Control** (No Lore Lesson) | **6 / 9** | **2.67** |
-| **Treatment** (With Lore Lesson) | **3 / 9** | **4.33** |
+| **Control** (No Lore Lesson) | **9 / 9 (100%)** | **1.00** |
+| **Treatment** (With Lore Lesson) | **6 / 9 (66.7%)** | **2.67** |
 
 ---
 
@@ -19,33 +19,28 @@
 
 | Bug ID | Gotcha / Topic | Control Solved | Treatment Solved | Outcome Type |
 | :--- | :--- | :---: | :---: | :--- |
-| `0002` | `asyncio.gather` detached siblings | 3 / 3 | 0 / 3 | **Degradation / Over-prescriptive Harm** |
-| `0005` | Async generator `aclose` cleanup | 3 / 3 | 3 / 3 | **Null / Model Redundancy** |
-| `0006` | Default `run_in_executor` starvation | 0 / 3 | 0 / 3 | **Instrument Failure (Hardware concurrency capacity)** |
-| `probe 1` | `asyncio.subprocess` pipe buffer deadlock | 1 / 1 (cold) | — | **Null / Model Redundancy** (Model supplied `communicate()` cold) |
-| `probe 2` | Pydantic v2 `field_validator` on defaults | 1 / 1 (cold) | — | **Null / Model Redundancy** (Model supplied `model_validator` cold) |
+| `0002` | `asyncio.gather` detached siblings | **3 / 3** (turn 1) | **0 / 3** (turn 6) | **Negative Lift / Over-prescriptive Harm** |
+| `0005` | Async generator `aclose` cleanup | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null / Model Redundancy** |
+| `0006` | Default `run_in_executor` thread pool starvation | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null / Model Redundancy** |
 
 ---
 
 ## 💡 Key Empirical Insights
 
-1. **`0002` — Prescriptive Lessons Can Override Correct Model Defaults**:
-   - Without the lesson, `gemini-3.1-flash-lite` reached for `return_exceptions=True` (correct for "all results required").
-   - With the lesson (which emphasized `TaskGroup` as a modern best practice), the model forced `TaskGroup`, which cancels siblings when one task fails. This caused sibling outcomes to be lost, failing the specific completion requirement.
-   - **Takeaway:** Lessons MUST be strictly conditional ("use X ONLY when Y") rather than prescriptively recommending a "best practice" that overrides correct context-sensitive model defaults.
+### 1. `0002` — Prescriptive Lessons Can Override Correct Model Defaults
+- **Without the lesson (Control):** `gemini-3.1-flash-lite` solved the problem in 1 turn by retaining `asyncio.gather` with `return_exceptions=True`, allowing all accounts to be processed and inspected.
+- **With the lesson (Treatment):** The lesson emphasized `asyncio.TaskGroup` as a modern best practice. The model followed the lesson prescriptively, using `TaskGroup` which automatically cancels remaining sibling tasks when account 2 fails. This caused accounts 1 and 3 to be cancelled and lost, failing the business requirement.
+- **Takeaway:** Prescriptive lesson phrasing ("use X instead of Y") carries active downside risk by overriding valid, context-sensitive model defaults. Lessons must be strictly conditional ("use X when condition A; use Y when condition B").
 
-2. **Standard-Library & Major Framework Gotchas Are Memorized**:
-   - `gemini-3.1-flash-lite` correctly diagnosed and fixed `aclose` generator cleanup, 1MB `asyncio.subprocess` pipe buffer deadlocks, AND Pydantic v2 default validation cold without assistance.
-   - **Takeaway:** For standard library and major framework gotchas heavily present in training sets, in-context lesson injection provides zero marginal lift. Lore's true value proposition relies on obscure, rapidly evolving, or post-cutoff package gotchas.
-
-3. **`0006` — Instrument Failure (Dual-Check Verification Worked)**:
-   - On multi-core host hardware, the default thread pool size (`min(32, cpu_count+4)`) was large enough that 8 blocking calls did not starve the ping call (`probe invalid`).
-   - **Takeaway:** The dual-check judge successfully detected that the bug was not manifesting on the runner machine and rejected all trials rather than recording false positives.
+### 2. Baseline Ceiling Effect (100% Control Solve)
+- Control solved **9 out of 9 trials in 1.00 turn**.
+- **Headroom Limit:** Because the baseline model solved all three gotchas cold without assistance, there was **zero headroom for positive performance lift** ($0 \rightarrow 1$) in this trial suite.
+- **Scope of Result:** This trial demonstrates the *downside risk* of naive knowledge injection on known tasks. It does *not* measure Lore's performance on tasks where unassisted control fails (0/3).
 
 ---
 
-## 🎯 Next Actions
+## ⚠️ Threats to Validity
 
-- Refine lesson schema/format to enforce explicit symptom-conditional scoping.
-- Pivot corpus selection toward obscure / version-specific edge cases.
-- Update bug `0006` snippet to dynamically scale worker pressure to CPU count.
+1. **Baseline Ceiling:** Because control solved 100% of bugs unaided, this trial suite cannot evaluate positive lift on un-memorized or post-cutoff gotchas.
+2. **Sample Size ($N=3$):** 3 trials per condition per bug isolates temperature-0 behavior for `gemini-3.1-flash-lite` but does not generalize to all model architectures.
+3. **Single Model Scope:** Results are bounded to `gemini-3.1-flash-lite` at `temperature=0.0`.

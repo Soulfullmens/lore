@@ -18,7 +18,7 @@
       "positive_passed": false,
       "negative_still_fails": true,
       "solved": false,
-      "detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu"
+      "detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'"
     }
   },
   {
@@ -29,7 +29,7 @@
       "positive_passed": false,
       "negative_still_fails": true,
       "solved": false,
-      "detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu"
+      "detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'"
     }
   },
   {
@@ -40,7 +40,7 @@
       "positive_passed": false,
       "negative_still_fails": true,
       "solved": false,
-      "detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu"
+      "detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'"
     }
   },
   {
@@ -51,7 +51,7 @@
       "positive_passed": false,
       "negative_still_fails": true,
       "solved": false,
-      "detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu"
+      "detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'"
     }
   },
   {
@@ -62,7 +62,7 @@
       "positive_passed": false,
       "negative_still_fails": true,
       "solved": false,
-      "detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu"
+      "detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'"
     }
   }
 ]

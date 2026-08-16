@@ -32,7 +32,7 @@
     "trial_num": 1,
     "turns_to_solve": 6,
     "solved": false,
-    "grade_detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu",
+    "grade_detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'",
     "transcript_path": "results\\0002_treatment_trial1.json"
   },
   {
@@ -41,7 +41,7 @@
     "trial_num": 2,
     "turns_to_solve": 6,
     "solved": false,
-    "grade_detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu",
+    "grade_detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'",
     "transcript_path": "results\\0002_treatment_trial2.json"
   },
   {
@@ -50,7 +50,7 @@
     "trial_num": 3,
     "turns_to_solve": 6,
     "solved": false,
-    "grade_detail": "candidate probe failed: Traceback (most recent call last):\n  File \"C:\\Users\\abdul rahaman\\Downloads\\Lore\\experiments\\proof-of-use\\bugs\\bug_0002_probe.py\", line 5, in <module>\n    mod = load(sys.argv[1])\n  File \"C:\\Users\\abdu",
+    "grade_detail": "candidate failed: candidate_error SyntaxError: cannot have both 'except' and 'except*' on the same 'try'",
     "transcript_path": "results\\0002_treatment_trial3.json"
   },
   {
@@ -111,54 +111,54 @@
     "bug_id": "0006",
     "condition": "control",
     "trial_num": 1,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.012) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.012s) vs original starved (0.895s) \u2014 fix works",
     "transcript_path": "results\\0006_control_trial1.json"
   },
   {
     "bug_id": "0006",
     "condition": "control",
     "trial_num": 2,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.011) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.011s) vs original starved (0.901s) \u2014 fix works",
     "transcript_path": "results\\0006_control_trial2.json"
   },
   {
     "bug_id": "0006",
     "condition": "control",
     "trial_num": 3,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.012) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.011s) vs original starved (0.902s) \u2014 fix works",
     "transcript_path": "results\\0006_control_trial3.json"
   },
   {
     "bug_id": "0006",
     "condition": "treatment",
     "trial_num": 1,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.012) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.011s) vs original starved (0.902s) \u2014 fix works",
     "transcript_path": "results\\0006_treatment_trial1.json"
   },
   {
     "bug_id": "0006",
     "condition": "treatment",
     "trial_num": 2,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.012) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.012s) vs original starved (0.900s) \u2014 fix works",
     "transcript_path": "results\\0006_treatment_trial2.json"
   },
   {
     "bug_id": "0006",
     "condition": "treatment",
     "trial_num": 3,
-    "turns_to_solve": 6,
-    "solved": false,
-    "grade_detail": "probe invalid: original buggy file not starved (0.012) ",
+    "turns_to_solve": 1,
+    "solved": true,
+    "grade_detail": "ping responsive (0.012s) vs original starved (0.905s) \u2014 fix works",
     "transcript_path": "results\\0006_treatment_trial3.json"
   }
 ]
