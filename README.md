@@ -1,12 +1,14 @@
-# Lore — Verified Experience Platform & Empirical Research Study
+# Lore — Verified Procedural Knowledge for AI Agents
+
+> 4 verified lessons · 2 draft · v0.2.0 CLI · MCP server included
 
 [![Release](https://img.shields.io/github/v/release/Soulfullmens/lore?color=blue)](https://github.com/Soulfullmens/lore/releases/tag/v0.2.0)
 [![Site](https://img.shields.io/badge/site-soulfullmens.github.io%2Flore-brightgreen)](https://soulfullmens.github.io/lore/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Lore** is an open-source platform for container-verified procedural knowledge ("lessons") with attached executable evals, paired with an empirical research study investigating the boundaries of in-context knowledge injection vs parametric memory in AI coding agents.
+**Lore** is a research corpus of container-verified procedural knowledge ("lessons") with attached executable evals, paired with a pre-registered empirical study investigating the limits of in-context knowledge injection vs parametric memory in AI coding agents.
 
-> 📄 **Featured Research Paper:** Read the full pre-registered empirical paper in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md).
+> 📄 **Featured Research Paper:** Read the full pre-registered empirical paper in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md) and [`QUALITY_BAR.md`](QUALITY_BAR.md).
 
 ---
 
@@ -18,7 +20,7 @@ We pre-registered an experimental protocol ([`PROTOCOL.md`](experiments/proof-of
 
 | Scenario Suite | Unassisted Control Solve Rate | In-Context Injection Lift | Primary Finding |
 | :--- | :---: | :---: | :--- |
-| **8 Exploratory Scenarios** (`asyncio`, Pydantic v2, Python 3.13, FastMCP) | **8 / 8 (100%)** | **0% Positive Lift** | Modern 2026-class models possess deep parametric memory of documented Python gotchas, rendering standard lesson injection redundant. |
+| **Pre-Registered Pilot** (18 Trials across 3 Gotchas) | **9 / 9 (100%)** | **0% Positive Lift** | Control solved 100% unaided in 1.00 mean turn; zero headroom for positive lift ($0 \rightarrow 1$) in this trial suite. |
 | **Prescriptive Best-Practice Gotcha** (`asyncio.gather` vs `TaskGroup`) | **3 / 3 (100%)** | **Negative Lift (Harm)** | Prescriptive lessons advocating "best practices" (`TaskGroup`) overrode valid context-sensitive model defaults (`return_exceptions=True`), causing 100% of treatment runs to fail. |
 
 *Read the full methodology, dual-verification harness design, and limitations in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md) and [`RESULTS.md`](experiments/proof-of-use/RESULTS.md).*
