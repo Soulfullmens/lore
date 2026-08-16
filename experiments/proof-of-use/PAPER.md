@@ -1,106 +1,102 @@
-# The Limits of In-Context Procedural Knowledge Injection for AI Coding Agents: An Empirical Pilot
+# The Limits of In-Context Procedural Knowledge Injection for AI Coding Agents: A Pre-Registered Pilot
 
-**Author:** Soulfullmens & Antigravity  
+**Project:** Lore — A Verified Experience Commons for AI Agents  
 **Date:** August 2026  
-**Target System:** Lore — A Verified Experience Commons for AI  
-**Model Tested:** `gemini-3.1-flash-lite` (Temperature = 0.0)  
-**Protocol:** Pre-registered in `PROTOCOL.md` (Git commit `403e5d3`)
+**Model tested:** `gemini-3.1-flash-lite` (temperature = 0.0)  
+**Protocol:** Pre-registered in `PROTOCOL.md` §3, locked at commit `403e5d3` **before any trial was run**.
 
 ---
 
 ## Abstract
 
-We present an empirical pilot study evaluating whether injecting verified, executable procedural knowledge ("lessons") into an AI coding agent's context window improves task completion speed and success rate during bug resolution. Using a pre-registered protocol, a dual-verification containerized test harness, and 8 exploratory gotcha scenarios spanning Python standard library async behaviors (`asyncio`), Pydantic v2 core/recent APIs, and the Model Context Protocol (`FastMCP`), we measure control performance (symptom + code only) versus treatment performance (symptom + code + verified lesson). 
+We report a small, pre-registered pilot evaluating whether injecting verified, executable procedural knowledge ("lessons") into an AI coding agent's context improves bug-fixing success and speed. Using a locked protocol and a decoupled, containerized dual-verification harness, we ran **18 trials** (3 bugs × 2 conditions × 3 trials) on Python `asyncio` gotchas, comparing a control condition (symptom + code) against a treatment condition (symptom + code + verified lesson).
 
-For the tested model (`gemini-3.1-flash-lite`), our primary finding is a **100% (8/8) cold solve rate** on unassisted control runs across all 8 tested gotcha scenarios (whether via training set memorization or general parametric reasoning, which this study does not differentiate). Consequently, in-context procedural knowledge injection yielded **0% positive performance lift** in this trial suite. Furthermore, we demonstrate that prescriptively worded lessons can introduce **negative performance lift** by overriding valid, context-sensitive model defaults with rigid "best practices." 
+For `gemini-3.1-flash-lite`, control solved all three bugs on the first turn in every trial (**9/9**). Treatment solved **6/9** with a higher mean turn count (**2.67 vs 1.00**): the lesson was neutral on two bugs and actively harmful on one, where a prescriptively worded "best practice" lesson steered the model away from a correct, context-appropriate default. Injection therefore produced **no positive lift and measurable downside on one of three bugs** in this suite.
 
-**Key Limitation:** Because all 8 exploratory gotcha scenarios were solved cold by the model without assistance, we did not observe a baseline unassisted failure. Therefore, whether in-context injection provides positive 0→1 lift for genuinely un-memorized, private, or post-cutoff gotchas remains an open research question. We discuss the architectural implications for experience registries and knowledge injection systems.
-
----
-
-## 1. Introduction & Hypothesis
-
-AI coding agents frequently encounter recurring gotchas: subtle framework behaviors, version-specific API shifts, and resource leak traps. The founding premise of *Lore* was that creating a global, executable, container-verified registry of procedural knowledge (with attached evals) would allow agents to retrieve verified lessons at inference time and avoid known failure modes.
-
-### Pre-Registered Hypotheses (PROTOCOL.md §3)
-- **Primary Metric:** Turns-to-correct-fix (capped at 6 turns; grade determined by mechanical containerized judge).
-- **H1 (Treatment Lift):** Treatment condition (with lesson) solves tasks in fewer turns and at higher rates than control.
-- **H0 (Null Hypothesis):** Lesson injection provides no statistically observable difference in solve rate or turns.
-- **Disappointment Criterion (Pre-Committed):** If control solves tasks in $\le 2$ turns without assistance, the model already possesses internalized parametric memory or reasoning capabilities for the gotcha, rendering in-context injection redundant.
+Because the unassisted baseline was already 100%, this pilot has **no headroom to detect positive lift**; it can only measure whether a lesson *harms* tasks the model already solves. Whether in-context injection provides positive lift on genuinely un-solved gotchas (private, post-cutoff, or non-memorized) is **untested here** and remains the central open question — the very question our pre-registered protocol names as the real test of Lore's value.
 
 ---
 
-## 2. Experimental Design & Methodology
+## 1. Introduction & Pre-Registered Hypotheses
+
+AI coding agents repeatedly hit recurring gotchas: subtle framework behaviors, version-specific API shifts, and resource-leak traps. Lore's founding premise is that a global, executable, container-verified registry of procedural knowledge (each lesson carrying its own eval) would let agents retrieve verified lessons at inference time and avoid known failure modes. This pilot is the first empirical test of whether such injection helps a real model.
+
+Our predictions were locked in `PROTOCOL.md` §3 at commit `403e5d3` **before any trial ran**:
+
+- **Primary metric:** turns-to-correct-fix (capped at 6), graded by a mechanical containerized judge.
+- **H1 (Treatment lift):** with the lesson, the agent solves in fewer turns and/or at a higher rate than control.
+- **H0 (Null):** lesson injection produces no observable difference in solve rate or turns.
+- **Pre-committed redundancy criterion:** if control solves a bug in $\le 2$ turns unaided, the model already holds the needed capability and in-context injection is *redundant* for that bug. This is a real — if disappointing — finding, and a signal that Lore's value must be sought on bugs the model cannot already solve.
+
+We emphasize that the redundancy criterion was **pre-registered, not chosen after seeing the data**. The outcome below matched it, which is why we report the null/negative result with confidence rather than reframing it post hoc.
+
+---
+
+## 2. Methodology
 
 ### 2.1 Decoupled Dual-Verification Harness
-To eliminate evaluation bias, we implemented a decoupled harness architecture:
-1. **Agent View (`_buggy.py`):** The model receives the raw symptom and realistic, natural code with all giveaway comments and explicit test assertions stripped.
-2. **Behavioral Probe (`_probe.py`):** An unseen test harness imports the candidate module and evaluates runtime behavior (e.g. wall-clock latency, stream closure, event log state).
-3. **Dual-Check Judge (`_judge.py`):** Evaluates (A) whether the candidate passes positive runtime behavioral assertions AND (B) confirms that the untouched original buggy code fails (preventing false positives from hardware concurrency variances or invalid tests).
+To remove evaluation bias, grading is fully mechanical and decoupled from what the agent sees:
+
+1. **Agent view (`bug_XXXX_buggy.py`):** the model receives the raw symptom and realistic code with giveaway comments and explicit test assertions stripped.
+2. **Behavioral probe (`bug_XXXX_probe.py`):** an unseen harness imports the candidate module and measures runtime *behavior* (e.g. settled-transaction state, ping latency under load) — never anything the candidate prints.
+3. **Dual-check judge (`bug_XXXX_judge.py`):** a candidate passes only if (A) it satisfies the positive behavioral assertion **and** (B) the untouched original buggy file still fails the same probe — proving the bug was real and the probe discriminates, guarding against false positives from environment variance or a neutered test.
+
+A broken candidate (syntax/import/runtime error) is recorded as a clean, path-free candidate failure, distinct from any harness malfunction.
 
 ### 2.2 Temperature & Model Locking
-All trials were executed at `temperature=0.0` using `gemini-3.1-flash-lite` to ensure deterministic execution and isolate lesson presence as the single independent variable.
+All trials ran at `temperature=0.0` on `gemini-3.1-flash-lite`, isolating lesson presence as the single independent variable. Every bug's buggy file, probe, judge, and raw JSON transcripts are committed (see Appendix B).
 
 ---
 
-## 3. Empirical Results
+## 3. Results
 
-### 3.1 Pre-Registered Pilot Study (18 Trials)
+Three pre-registered bugs, 18 trials total.
 
 | Bug ID | Domain / Gotcha | Control Solved | Treatment Solved | Result |
 | :--- | :--- | :---: | :---: | :--- |
-| `0002` | `asyncio.gather` detached sibling side-effects | **3 / 3** (turn 1) | **0 / 3** (turn 6) | **Negative Lift (Harm)** |
-| `0005` | Async generator `aclose()` cleanup deferral | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (Redundant)** |
-| `0006` | Default `run_in_executor` pool starvation | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (Redundant)** |
+| `0002` | `asyncio.gather` detached-sibling side effects | **3 / 3** (turn 1) | **0 / 3** (turn 6) | **Negative lift (harm)** |
+| `0005` | Async-generator `aclose()` cleanup deferral | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (redundant)** |
+| `0006` | Default `run_in_executor` pool starvation | **3 / 3** (turn 1) | **3 / 3** (turn 1) | **Null (redundant)** |
 
-*Summary:* Control solved **9/9 (100%)** in 1.00 mean turns; Treatment solved **6/9 (66.7%)** in 2.67 mean turns. Due to the 100% control baseline solve rate, there was zero headroom for positive performance lift ($0 \rightarrow 1$) in this trial suite.
-
-### 3.2 Extended Probe Suite (5 Additional Scenarios)
-
-| Scenario | Domain / Gotcha | Control Result | Outcome |
-| :--- | :--- | :---: | :--- |
-| `probe 1` | `asyncio.subprocess` 1MB pipe buffer deadlock | **1 / 1** (turn 1) | **Null (Redundant)** — Supplied `proc.communicate()` cold |
-| `probe 2` | Pydantic v2 `field_validator` on default values | **1 / 1** (turn 1) | **Null (Redundant)** — Supplied `@model_validator` cold |
-| `probe 3` | Python 3.13 `asyncio.Queue.shutdown()` & `QueueShutDown` | **1 / 1** (turn 1) | **Null (Redundant)** — Supplied `asyncio.QueueShutDown` cold |
-| `probe 4` | Pydantic `ConfigDict(defer_build=True)` initialization | **1 / 1** (turn 1) | **Null (Redundant)** — Supplied `model_rebuild()` cold |
-| `probe 5` | FastMCP `Context` dependency injection syntax | **1 / 1** (turn 1) | **Null (Redundant)** — Supplied `ctx: Context` parameter cold |
+**Summary:** Control solved **9/9 (100%)** at **1.00** mean turns; treatment solved **6/9 (66.7%)** at **2.67** mean turns. With a 100% control baseline, there was **zero headroom for positive lift** in this suite; the only outcomes available to the lesson were "neutral" or "worse."
 
 ---
 
-## 4. Key Findings & Discussion
+## 4. Findings & Discussion
 
-### 4.1 Finding 1: High Unassisted Baseline Capability
-Across 8 exploratory scenarios spanning core standard libraries, framework gotchas, Python 3.13 features, and FastMCP SDK patterns, `gemini-3.1-flash-lite` solved **8 out of 8 (100%)** problems on Turn 1 without assistance (whether via training set memorization or general parametric reasoning, which this study does not differentiate). For these scenarios, the tested model solved the problems cold, rendering in-context procedural knowledge injection redundant.
+### 4.1 High unassisted baseline on the tested bugs
+On all three `asyncio` gotchas, `gemini-3.1-flash-lite` produced a correct fix on turn 1 in every control trial (9/9), whether via memorized training data or general reasoning — a distinction this study does not attempt to separate. For these specific bugs, the model already possessed the capability, making in-context injection redundant. We make **no claim beyond these three bugs**; a 100% rate on a hand-picked trio is a statement about the trio, not about the model or the method in general.
 
-### 4.2 Finding 2: Over-Prescriptive Lessons Cause Negative Performance Lift
-In Bug `0002` (`asyncio.gather`), control solved 3/3 in 1 turn by supplying `return_exceptions=True` (allowing all tasks to complete and return results). In treatment, injecting a lesson that prescriptively emphasized `TaskGroup` as a modern "best practice" caused the model to replace `gather` with `TaskGroup`. Because `TaskGroup` cancels sibling tasks upon the first failure, non-failing sibling account transactions were cancelled and omitted from the final reconciliation dictionary, causing **100% of treatment runs to fail**.
+### 4.2 A prescriptive lesson caused negative lift on `0002`
+In control, the model solved `0002` in one turn by keeping `asyncio.gather` and adding `return_exceptions=True`, which lets all tasks complete so the non-failing accounts (1 and 3) appear in the final reconciliation. In treatment, a lesson that prescriptively promoted `asyncio.TaskGroup` as the modern "best practice" steered the model to replace `gather` with `TaskGroup`. Because `TaskGroup` **cancels sibling tasks on the first failure**, accounts 1 and 3 were cancelled and lost, failing the business requirement in **100% of treatment trials**. In later turns the model compounded the error into invalid syntax (mixing `except*` with a bare `except` on one `try`), never recovering within the turn cap.
 
-> **Takeaway:** Prescriptive procedural knowledge that advocates a "best practice" without explicit symptom-conditional boundaries risks overriding correct, context-sensitive model defaults.
-
----
-
-## 5. Scope, Limitations & Strategic Recommendations
-
-### 5.1 Study Limitations
-1. **Single Model Evaluation:** Results are bounded to `gemini-3.1-flash-lite` at `temperature=0.0`. Other model architectures or parameter sizes may exhibit different baseline knowledge profiles.
-2. **Exploratory Pilot Scope:** 8 hand-selected gotcha scenarios represent an exploratory pilot suite rather than an exhaustive benchmark.
-3. **Non-Differentiated Baseline Knowledge:** This study measures unassisted solve rate but does not differentiate whether baseline success stems from memorized training data or real-time reasoning.
-4. **Untested Cold-Failure Regime:** Because all 8 scenarios were solved unassisted by the model, we did not observe a baseline cold failure. Thus, the degree of lift provided by lesson injection on genuinely un-memorized, private, or post-cutoff gotchas remains unmeasured in this study.
-
-### 5.2 Evidence-Grounded Suggestions for Knowledge Registries
-1. **Consider Scoping In-Context Injection to Un-Memorizable Boundaries:** Our findings suggest that experience registries may benefit from avoiding standard library or broadly documented framework gotchas, focusing instead on:
-   - Private / enterprise codebase patterns.
-   - Fast-evolving, un-memorized API shifts occurring post-model training cutoff.
-   - Non-deterministic environment / C-extension gotchas.
-2. **Investigate Symptom-Conditional Scoping:** The single negative-lift case observed (`0002`) suggests that procedural knowledge should be formatted conditionally ("Use X only when condition Y is met; avoid X when Z") to prevent overriding context-sensitive model defaults on edge cases.
+> **Takeaway:** procedural knowledge that advocates a "best practice" without explicit, symptom-conditional boundaries carries active downside risk — it can override a correct, context-sensitive default. Lessons should be framed conditionally ("use X when Y holds; avoid X when Z"), never as unconditional replacements.
 
 ---
 
-## Appendix: Reproducibility
-All prompts, dual-verification judges, and raw JSON trial transcripts are archived in `experiments/proof-of-use/` in the `Soulfullmens/lore` repository.
+## 5. Scope, Limitations & Recommendations
+
+### 5.1 Limitations
+1. **Baseline ceiling (the dominant limitation).** Control solved 100% unaided, so this suite *cannot* measure positive lift. It measures only whether a lesson harms tasks the model already solves. Lore's actual value proposition — helping an agent on a bug it fails without help — is **not tested here**, because the sample contains no such bug.
+2. **Single model.** Results are bounded to `gemini-3.1-flash-lite` at `temperature=0.0`; other architectures may have different baseline knowledge and different susceptibility to prescriptive framing.
+3. **Small N.** Three trials per condition per bug isolates temperature-0 behavior but does not support statistical generalization.
+4. **Non-differentiated baseline.** We measure unassisted solve rate but do not separate memorization from reasoning.
+
+### 5.2 Recommendations for the next round
+1. **Test the regime that matters: seed bugs where control *fails* (0/3 or 1/3).** Only against a non-zero failure floor can positive lift be observed. This is the experiment that would actually validate — or refute — Lore's premise.
+2. **Scope lessons toward un-memorizable boundaries:** private/enterprise patterns, fast-moving post-cutoff API shifts, and non-deterministic environment gotchas — where a model is more likely to lack the answer parametrically.
+3. **Enforce symptom-conditional phrasing** in the lesson schema, motivated directly by the `0002` failure, so a lesson cannot read as an unconditional "use X instead of Y."
 
 ---
 
-## Appendix: Reproducibility
-All prompts, dual-verification judges, and raw JSON trial transcripts are archived in `experiments/proof-of-use/` in the `Soulfullmens/lore` repository.
+## Appendix A: Candidate scenarios for a future round (NOT part of this study)
 
+During development we informally spot-checked several additional gotchas — `asyncio.subprocess` pipe-buffer deadlock, Pydantic v2 `field_validator` on default values, Python 3.13 `asyncio.Queue.shutdown`, Pydantic `ConfigDict(defer_build=True)`, and FastMCP `Context` injection. **These were not run through the dual-verification harness, have no committed transcripts, and no solve-rate or lift is claimed from them.** They are listed only as candidates to be built out as proper, harnessed bugs in a future round — ideally chosen to include cases the model does *not* solve cold (per §5.2).
+
+## Appendix B: Reproducibility
+
+Buggy files, behavioral probes, dual-verification judges, the pre-registered protocol, and raw JSON trial transcripts for bugs `0002`, `0005`, and `0006` are archived in `experiments/proof-of-use/` in the `Soulfullmens/lore` repository. The runner (`run_pou.py`) sanitizes machine-specific paths from all logged results.
+
+## Acknowledgements & Tooling
+
+This work was carried out by the Lore project author. Development was assisted by AI coding tools (the Antigravity IDE and an LLM pair-programming assistant); all experimental design, pre-registration, and analysis decisions are the author's.
