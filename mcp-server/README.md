@@ -17,7 +17,7 @@ Add the following to your `claude_desktop_config.json` (or Cursor MCP settings):
     "lore": {
       "command": "python",
       "args": [
-        "C:/Users/abdul rahaman/Downloads/Lore/mcp-server/server.py"
+        "/absolute/path/to/lore/mcp-server/server.py"
       ]
     }
   }
