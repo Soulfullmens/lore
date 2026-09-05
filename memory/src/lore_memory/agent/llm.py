@@ -101,11 +101,13 @@ class OpenRouterClient:
         api_key: str | None = None,
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 60.0,
+        max_tokens: int = 4096,
     ) -> None:
         self.model = model
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_tokens = max_tokens
 
     def _get_api_key(self) -> str:
         key = self.api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -174,6 +176,7 @@ class OpenRouterClient:
             "messages": formatted_messages,
             "temperature": temperature,
             "seed": seed,
+            "max_tokens": self.max_tokens,
         }
         if formatted_tools:
             payload["tools"] = formatted_tools

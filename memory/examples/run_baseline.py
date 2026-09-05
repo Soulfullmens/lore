@@ -43,6 +43,7 @@ def main() -> None:
     ap.add_argument("--family", default=None, help="filter tasks by family name (e.g. 'acme-stream')")
     ap.add_argument("--task", default=None, help="filter tasks by task id (e.g. 'acme-stream-consumer')")
     ap.add_argument("--max-steps", type=int, default=12)
+    ap.add_argument("--max-tokens", type=int, default=4096, help="max tokens per LLM response")
     args = ap.parse_args()
 
     if args.model is None:
@@ -62,7 +63,7 @@ def main() -> None:
     print(f"Provider: {args.provider} | Model: {args.model} | Seeds: {args.seeds}")
 
     if args.provider == "openrouter":
-        llm = OpenRouterClient(model=args.model)
+        llm = OpenRouterClient(model=args.model, max_tokens=args.max_tokens)
     else:
         llm = GeminiClient(model=args.model)
 

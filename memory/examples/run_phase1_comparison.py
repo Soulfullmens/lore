@@ -42,8 +42,13 @@ def main() -> None:
     ap.add_argument("--family", default=None, help="filter tasks by family name (e.g. 'acme-stream')")
     ap.add_argument("--task", default=None, help="filter tasks by task id")
     ap.add_argument("--max-steps", type=int, default=12)
+    ap.add_argument("--max-tokens", type=int, default=4096, help="max tokens per LLM response")
     ap.add_argument("--k", type=int, default=3, help="memories retrieved per task")
     ap.add_argument("--ablate", action="store_true", default=True, help="enable leave-one-out causal ablation")
+    ap.add_argument(
+        "--skip-baseline", action="store_true", default=False,
+        help="skip re-running baseline (use when baseline is already locked from prior runs, halves API cost)",
+    )
     args = ap.parse_args()
 
     if args.model is None:
@@ -61,9 +66,11 @@ def main() -> None:
     families = sorted({t.family for t in tasks})
     print(f"Loaded {len(tasks)} tasks across families: {families}")
     print(f"Provider: {args.provider} | Model: {args.model} | Seeds: {args.seeds}")
+    if args.skip_baseline:
+        print("  ** --skip-baseline: only running memory condition (baseline locked from prior runs)")
 
     if args.provider == "openrouter":
-        llm = OpenRouterClient(model=args.model)
+        llm = OpenRouterClient(model=args.model, max_tokens=args.max_tokens)
     else:
         llm = GeminiClient(model=args.model)
 
@@ -81,11 +88,17 @@ def main() -> None:
     )
 
     print(f"\nRunning benchmark comparison across {args.seeds} seeds...")
-    report = harness.run(
-        baseline_factory=NullMemoryBackend,
-        memory_factory=memory_factory,
-        config=cfg,
-    )
+    if args.skip_baseline:
+        report = harness.run_memory_only(
+            memory_factory=memory_factory,
+            config=cfg,
+        )
+    else:
+        report = harness.run(
+            baseline_factory=NullMemoryBackend,
+            memory_factory=memory_factory,
+            config=cfg,
+        )
 
     base = report.per_condition.get(Mode.BASELINE)
     mem = report.per_condition.get(Mode.MEMORY)

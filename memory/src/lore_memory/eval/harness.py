@@ -166,6 +166,28 @@ class Harness:
 
         return self._build_report(records, ablation, cfg)
 
+    def run_memory_only(
+        self,
+        memory_factory: BackendFactory,
+        config: RunConfig | None = None,
+    ) -> HarnessReport:
+        """Run ONLY the memory condition (skip baseline to save API tokens).
+
+        Use this when baseline is already locked from prior runs. The report
+        will only contain MEMORY-mode records — no lift or contamination can
+        be computed, but the raw per-task success rate is available.
+        """
+        cfg = config or RunConfig()
+        records: list[RunRecord] = []
+        ablation: list[AblationRecord] = []
+
+        mem_records, mem_ablation = self._run_memory_condition(memory_factory, cfg)
+        records += mem_records
+        ablation += mem_ablation
+
+        return self._build_report(records, ablation, cfg)
+
+
     # ----------------------------------------------------------------- #
     def _run_condition(
         self, mode: Mode, factory: BackendFactory, cfg: RunConfig
