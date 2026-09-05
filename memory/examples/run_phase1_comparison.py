@@ -23,7 +23,7 @@ from pathlib import Path
 from lore_memory.agent import GeminiClient, OpenRouterClient, ReActAgent
 from lore_memory.backends import NullMemoryBackend
 from lore_memory.eval import AblationConfig, Harness, Mode, RunConfig
-from lore_memory.store import EpisodicMemoryBackend, HashEmbedder
+from lore_memory.store import ConsolidatingMemoryBackend, EpisodicMemoryBackend, HashEmbedder
 from lore_memory.tasks import load_tasks
 
 TASKS_ROOT = Path(__file__).resolve().parent.parent / "tasks"
@@ -48,6 +48,10 @@ def main() -> None:
     ap.add_argument(
         "--skip-baseline", action="store_true", default=False,
         help="skip re-running baseline (use when baseline is already locked from prior runs, halves API cost)",
+    )
+    ap.add_argument(
+        "--consolidate", action="store_true", default=False,
+        help="use Phase 2 ConsolidatingMemoryBackend (lessons-first retrieval) instead of Phase 1 episodic",
     )
     args = ap.parse_args()
 
@@ -79,6 +83,8 @@ def main() -> None:
 
     def memory_factory():
         emb = HashEmbedder(dim=256)
+        if args.consolidate:
+            return ConsolidatingMemoryBackend(embedder=emb)
         return EpisodicMemoryBackend(embedder=emb)
 
     cfg = RunConfig(

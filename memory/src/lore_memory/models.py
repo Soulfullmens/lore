@@ -120,10 +120,24 @@ class Lesson:
     starts deliberately agnostic (0.5) and moves only as outcomes accrue,
     so a lesson extracted from a single lucky episode is never trusted
     until it has actually helped.
+
+    The ``symptom`` / ``fix`` / ``rationale`` triple is the canonical
+    representation.  It maps to agent-SEO (symptom-first HTML) and makes
+    future LLM summarization a drop-in replacement — populate the same
+    three fields with better prose, nothing downstream changes.
     """
 
-    statement: str
-    source_episode_ids: list[str]
+    # --- core content (symptom-first schema) ---
+    symptom: str = ""                # what went wrong / what the model gets wrong cold
+    fix: str = ""                    # the concrete code or strategy change
+    rationale: str = ""              # *why* the fix works (the transferable insight)
+
+    # legacy single-string field, auto-populated from symptom/fix if empty
+    statement: str = ""
+
+    source_episode_ids: list[str] = field(default_factory=list)
+    task_id: str = ""                # originating task id
+    task_family: str = ""            # originating task family
     confidence: float = 0.5
     times_applied: int = 0
     times_helped: int = 0
@@ -133,11 +147,24 @@ class Lesson:
     last_used: datetime | None = None
     embedding: Vector | None = None
 
+    def __post_init__(self) -> None:
+        if not self.statement and (self.symptom or self.fix):
+            parts = []
+            if self.symptom:
+                parts.append(f"Symptom: {self.symptom}")
+            if self.fix:
+                parts.append(f"Fix: {self.fix}")
+            if self.rationale:
+                parts.append(f"Rationale: {self.rationale}")
+            self.statement = " | ".join(parts)
+
     def bayesian_confidence(self, prior_strength: float = 4.0) -> float:
         """Smoothed success rate — avoids 1.0/0.0 swings on tiny samples.
 
         Uses a Beta(prior_strength/2, prior_strength/2) prior centred at
-        0.5, so a lesson needs repeated evidence to move far from neutral.
+        0.5 (Beta(2,2) by default), so a lesson needs repeated evidence
+        to move far from neutral.  This prevents volatile 0%/100%
+        confidence on tiny episode counts.
         """
         a = self.times_helped + prior_strength / 2
         b = (self.times_applied - self.times_helped) + prior_strength / 2
