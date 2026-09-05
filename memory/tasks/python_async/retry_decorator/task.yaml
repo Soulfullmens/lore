@@ -1,0 +1,13 @@
+id: async-retry-decorator
+family: python-async
+is_control: false
+prompt: |
+  Fix solution.py so that the `@retry_async(attempts=3, retryable=(Boom,))`
+  decorator is correct. It wraps an async function and retries when it fails,
+  but ONLY when the raised exception is an instance of a type in `retryable`.
+  Any exception NOT in `retryable` must propagate immediately without being
+  retried. If all `attempts` are used up, raise the last exception.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

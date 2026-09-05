@@ -1,0 +1,11 @@
+id: general-string-reverse
+family: general
+is_control: true
+prompt: |
+  The function `reverse_words(s)` in solution.py must reverse the order
+  of words in the input string while preserving whitespace between them.
+  For example, "hello world" becomes "world hello".
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

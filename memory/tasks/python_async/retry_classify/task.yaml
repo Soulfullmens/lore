@@ -1,0 +1,12 @@
+id: async-retry-classify
+family: python-async
+is_control: false
+prompt: |
+  Fix solution.py so retry_call is correct. It calls the async function fn() and
+  retries on failure, but ONLY for exception types listed in the `retryable`
+  tuple. Any exception that is NOT in `retryable` must propagate immediately
+  without being retried. If all `attempts` are used up, raise the last exception.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

@@ -1,0 +1,16 @@
+id: acme-stream-batch
+family: acme-stream
+is_control: false
+prompt: |
+  Fix `batch_consume(client, topic, batch_size, handler)` in solution.py.
+  It reads messages in chunks of `batch_size` from `client.stream_events(topic)`
+  and passes `batch_payloads` to `await handler(payloads)`.
+  Follow the Acme Stream Protocol:
+  1. Await `client.subscribe(topic)` before streaming events.
+  2. If `handler` succeeds, call `await client.ack(m.id)` ONLY for messages where `m.requires_ack` is True.
+  3. If `handler` raises an exception, call `await client.nack(m.id, reason=str(err))` for EVERY message in the batch.
+  4. Return the total count of batches processed.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, client.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

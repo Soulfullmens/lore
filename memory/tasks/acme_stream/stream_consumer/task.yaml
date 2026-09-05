@@ -1,0 +1,16 @@
+id: acme-stream-consumer
+family: acme-stream
+is_control: false
+prompt: |
+  Fix `process_stream(client, topic, handler)` in solution.py.
+  It must consume messages from `client.stream_events(topic)` and pass their payloads
+  to `await handler(msg.payload)`.
+  Follow the Acme Stream Protocol:
+  1. You must await `client.subscribe(topic)` before streaming events.
+  2. For each message, if `msg.requires_ack` is True and handler succeeds, call `await client.ack(msg.id)`. Do NOT call ack() on messages where requires_ack is False.
+  3. If `handler` raises an exception, call `await client.nack(msg.id, reason=str(err))` and continue processing the remaining stream messages without aborting the loop.
+  4. Return the total count of messages processed.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, client.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

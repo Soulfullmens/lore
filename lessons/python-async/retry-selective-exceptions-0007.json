@@ -1,0 +1,112 @@
+{
+  "lore_version": "0.2",
+  "id": "lore:python-async/retry-selective-exceptions/0007",
+  "semver": "1.0.0",
+  "kind": "gotcha",
+  "summary": "Catching generic Exception in async retry loops swallows non-retryable/fatal errors, causing wasted retries, latency spikes, and silent failures; restrict retry catches strictly to allowlisted exception types (e.g., `except retryable as e:` or explicitly re-raise).",
+  "symptoms": [
+    "Fatal errors (e.g., auth failure, bad request, validation error) are retried repeatedly instead of failing fast",
+    "Non-retryable exceptions take multiple retry delays before propagating",
+    "Side-effects repeated on permanent failure conditions"
+  ],
+  "domain": "python-async",
+  "tags": [
+    "asyncio",
+    "retry",
+    "exception-handling",
+    "error-classification"
+  ],
+  "context": {
+    "language": "python",
+    "runtime": ">=3.10,<3.14",
+    "dependencies": {},
+    "os": [
+      "linux",
+      "macos",
+      "windows"
+    ],
+    "preconditions": [
+      "Implementing custom async retry helper or decorator",
+      "Handling transient failures while expecting permanent failures to propagate"
+    ]
+  },
+  "problem": "A common mistake when writing retry loops is using `except Exception as e:` which catches every exception indiscriminately. Permanent/fatal errors (like ValueError, TypeError, AuthenticationError) should never be retried, as retrying them wastes resources, causes unnecessary delay, and may repeat non-idempotent side effects.",
+  "procedure": [
+    "Pass a tuple of allowed retryable exception classes (e.g., `retryable=(TransientNetworkError, TimeoutError)`) to the retry helper.",
+    "Use `except retryable as e:` in the retry block so non-matching exceptions bypass the catch and propagate immediately.",
+    "If using a dynamic exception tuple, ensure it is passed as a tuple to `except` or checked with `isinstance(e, retryable)` and re-raised immediately if False."
+  ],
+  "anti_patterns": [
+    "Using `except Exception:` inside retry loops without re-raising non-retryable errors.",
+    "Assuming all async exceptions are transient network glitches.",
+    "Catching BaseException, which intercepts CancelledError and KeyboardInterrupt."
+  ],
+  "failed_attempts": [
+    {
+      "approach": "Catching Exception and sleeping before checking status",
+      "why_it_fails": "Delays propagation of fatal errors and causes redundant executions.",
+      "time_wasted_estimate_min": 25
+    }
+  ],
+  "verification": {
+    "type": "container",
+    "image": "python:3.12-slim",
+    "setup": [],
+    "files": {
+      "test_fix.py": "import asyncio\nimport sys\n\nclass TransientError(Exception): pass\nclass FatalError(Exception): pass\n\ncalls = 0\nasync def flaky():\n    global calls\n    calls += 1\n    if calls == 1:\n        raise FatalError('invalid credentials')\n    return 'ok'\n\nasync def retry_call(fn, attempts=3, retryable=(TransientError,)):\n    last = None\n    for _ in range(attempts):\n        try:\n            return await fn()\n        except retryable as e:\n            last = e\n    raise last\n\nasync def main():\n    try:\n        await retry_call(flaky, attempts=3, retryable=(TransientError,))\n        raise AssertionError('FatalError should have propagated')\n    except FatalError:\n        pass\n    assert calls == 1, f'Expected 1 call, got {calls}'\n    print('SUCCESS: fatal error failed fast without retrying')\n\nasyncio.run(main())\nsys.exit(0)\n"
+    },
+    "run": "python test_fix.py",
+    "asserts": [
+      {
+        "type": "exit_code",
+        "equals": 0
+      },
+      {
+        "type": "stdout_contains",
+        "value": "SUCCESS"
+      }
+    ],
+    "must_fail_without_fix": true,
+    "broken_files": {
+      "test_broken.py": "import asyncio\nimport sys\n\nclass TransientError(Exception): pass\nclass FatalError(Exception): pass\n\ncalls = 0\nasync def flaky():\n    global calls\n    calls += 1\n    if calls == 1:\n        raise FatalError('invalid credentials')\n    return 'ok'\n\nasync def retry_call_broken(fn, attempts=3, retryable=(TransientError,)):\n    last = None\n    for _ in range(attempts):\n        try:\n            return await fn()\n        except Exception as e:\n            last = e\n    raise last\n\nasync def main():\n    try:\n        await retry_call_broken(flaky, attempts=3, retryable=(TransientError,))\n    except FatalError:\n        pass\n    if calls > 1:\n        print(f'SWALLOWED FATAL ERROR AND RETRIED: called {calls} times', file=sys.stderr)\n        sys.exit(1)\n    sys.exit(0)\n\nasyncio.run(main())\n"
+    },
+    "broken_run": "python test_broken.py",
+    "broken_asserts": [
+      {
+        "type": "exit_code",
+        "equals": 1
+      },
+      {
+        "type": "stderr_contains",
+        "value": "SWALLOWED FATAL ERROR AND RETRIED"
+      }
+    ],
+    "timeout_sec": 30,
+    "setup_network": "none",
+    "network": "none"
+  },
+  "lifecycle": {
+    "status": "draft",
+    "reverify_cadence_days": 30,
+    "watch": []
+  },
+  "trust": {
+    "independent_reproductions": 0,
+    "usage_reports": {
+      "worked": 0,
+      "failed": 0
+    },
+    "disputes_open": 0
+  },
+  "provenance": {
+    "author_human": "github:Soulfullmens",
+    "sources": [
+      {
+        "url": "https://docs.python.org/3/tutorial/errors.html#handling-exceptions",
+        "taint": "trusted_docs"
+      }
+    ],
+    "taint_level": "clean",
+    "signature": ""
+  }
+}

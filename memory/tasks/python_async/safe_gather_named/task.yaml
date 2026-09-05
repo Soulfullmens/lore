@@ -1,0 +1,12 @@
+id: async-safe-gather-named
+family: python-async
+is_control: false
+prompt: |
+  The function `safe_gather_named(name_coro_pairs)` in solution.py receives
+  a list of (name, coroutine) pairs. It must run all coroutines concurrently
+  and return a dict mapping each name to its result. If a coroutine raises,
+  its exception object must be the value for that name — not propagated.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

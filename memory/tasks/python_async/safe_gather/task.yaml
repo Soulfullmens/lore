@@ -1,0 +1,12 @@
+id: async-safe-gather
+family: python-async
+is_control: false
+prompt: |
+  The function `safe_gather(coros)` in solution.py must run all the given
+  coroutines concurrently and return a list of their results in order.
+  If a coroutine raises, its exception object must appear in the results
+  list at that position instead of propagating out of safe_gather.
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]
