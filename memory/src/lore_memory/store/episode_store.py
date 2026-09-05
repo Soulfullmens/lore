@@ -130,6 +130,62 @@ def _dict_to_episode(d: dict[str, Any]) -> Episode:
     )
 
 
+def _format_episode_for_retrieval(ep: Episode) -> str:
+    """Format an episode into an informative, actionable memory for system prompt injection."""
+    header = f"[{ep.task_family}/{ep.task_id}]"
+
+    # Extract informative thoughts from trajectory
+    thoughts = [
+        s.thought.strip().replace("\n", " ")
+        for s in ep.trajectory
+        if s.thought and len(s.thought.strip()) > 15
+    ]
+    informative_thoughts = [
+        t for t in thoughts
+        if not any(
+            t.lower().startswith(prefix)
+            for prefix in ("i will finish", "finish the task", "the check passed", "now i will finish")
+        )
+    ]
+    summary_thought = informative_thoughts[-1] if informative_thoughts else (thoughts[-1] if thoughts else "")
+    if len(summary_thought) > 300:
+        summary_thought = summary_thought[:300] + "..."
+
+    # Look for the last successful write_file action
+    solution_code = ""
+    for s in reversed(ep.trajectory):
+        if s.action.startswith("write_file("):
+            try:
+                import ast
+                raw_args = s.action[len("write_file("):-1]
+                args = ast.literal_eval(raw_args)
+                if isinstance(args, dict) and "content" in args:
+                    code = args["content"].strip()
+                    if len(code) > 600:
+                        code = code[:600] + "\n# ... (truncated)"
+                    path = args.get("path", "solution.py")
+                    solution_code = f"Working code in `{path}`:\n```python\n{code}\n```"
+                    break
+            except Exception:
+                pass
+            # fallback if ast parsing fails
+            act = s.action
+            if len(act) > 300:
+                act = act[:300] + "...)"
+            solution_code = f"Action: {act}"
+            break
+
+    parts = [header]
+    if summary_thought:
+        parts.append(f"Approach: {summary_thought}")
+    if solution_code:
+        parts.append(solution_code)
+    elif ep.task_description:
+        parts.append(f"Task: {ep.task_description[:200]}")
+
+    return "\n".join(parts)
+
+
 # --------------------------------------------------------------------------- #
 # Vector helpers
 # --------------------------------------------------------------------------- #
@@ -258,11 +314,7 @@ class SqliteEpisodeStore:
         out: list[RetrievedMemory] = []
         for score, rid, payload_json in scored[:k]:
             ep = _dict_to_episode(json.loads(payload_json))
-            # content = a concise summary for the system prompt
-            content = (
-                f"[{ep.task_family}/{ep.task_id}] "
-                f"{ep.task_description[:200]}"
-            )
+            content = _format_episode_for_retrieval(ep)
             out.append(
                 RetrievedMemory(
                     kind=MemoryKind.EPISODE,
