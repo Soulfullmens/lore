@@ -16,12 +16,15 @@ populated from mechanical analysis of the trajectory diffs.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 
-from ..models import AgentStep, Episode, Lesson, new_id
+from ..models import AgentStep, Episode, Lesson, LessonScope, new_id
 from .clustering import EpisodeCluster
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -131,6 +134,51 @@ def _simple_line_diff(success_code: str, failure_code: str) -> dict:
             removed.append(original)
 
     return {"added": added, "removed": removed, "moved": moved}
+
+
+_CONTROL_FLOW_KEYWORDS = {
+    "try:", "except", "finally:", "with ", "async with",
+    "if ", "elif ", "else:", "for ", "while ",
+    "return", "yield", "raise", "await ", "break", "continue",
+    "assert ",
+}
+
+_RELEVANT_CALLS = (
+    ".close()", ".cancel()", ".nack(", ".ack(",
+    ".wait(", ".put(", ".get(", ".gather(", ".sleep(",
+    "create_task(", "TaskGroup(",
+)
+
+
+def _is_causal_diff(diff: dict) -> tuple[bool, str]:
+    """Check whether a code diff represents structural or control-flow changes.
+
+    Filters out purely cosmetic differences (e.g. variable naming, comments,
+    blank lines, cosmetic whitespace) to prevent false-positive lessons.
+
+    Returns:
+        (is_causal, reason)
+    """
+    # 1. Structural moves (indentation shifts) are control-flow structure changes
+    if diff.get("moved"):
+        return True, f"structural move found ({len(diff['moved'])} line(s) with indentation change)"
+
+    added = diff.get("added", [])
+    removed = diff.get("removed", [])
+
+    for line in added + removed:
+        stripped = line.strip()
+        # Skip comments and docstrings
+        if stripped.startswith(("#", '"""', "'''")):
+            continue
+        # Check control-flow keywords
+        if any(kw in stripped for kw in _CONTROL_FLOW_KEYWORDS):
+            return True, f"control-flow keyword detected: '{stripped[:50]}'"
+        # Check relevant protocol / async method calls
+        if any(call in stripped for call in _RELEVANT_CALLS):
+            return True, f"protocol/resource call detected: '{stripped[:50]}'"
+
+    return False, "diff contains only naming/cosmetic changes without structural or control-flow shifts"
 
 
 def _extract_symptom_from_failures(failures: list[Episode]) -> str:
@@ -246,7 +294,16 @@ class PatternExtractor:
         and fail trajectories.
         """
         if not cluster.has_contrast:
+            logger.debug(
+                "Skipping cluster '%s' (scope=%s): no outcome contrast (%d pass, %d fail)",
+                cluster.key, cluster.scope, len(cluster.successes), len(cluster.failures)
+            )
             return []
+
+        logger.debug(
+            "Extracting patterns for cluster '%s' (scope=%s, %d pass, %d fail)",
+            cluster.key, cluster.scope, len(cluster.successes), len(cluster.failures)
+        )
 
         success_fps = [_fingerprint(ep) for ep in cluster.successes]
         failure_fps = [_fingerprint(ep) for ep in cluster.failures]
@@ -260,7 +317,6 @@ class PatternExtractor:
         )
 
         # --- 2. Code diff analysis ---
-        # Find the most common success and failure write_file contents
         best_success_code = self._best_write_content(success_fps)
         best_failure_code = self._best_write_content(failure_fps)
 
@@ -268,6 +324,17 @@ class PatternExtractor:
         fix_text = ""
         if best_success_code and best_failure_code:
             diff = _simple_line_diff(best_success_code, best_failure_code)
+            is_causal, reason = _is_causal_diff(diff)
+            if not is_causal:
+                logger.info(
+                    "Causal guard rejected diff for cluster '%s': %s",
+                    cluster.key, reason
+                )
+                return []
+            logger.debug(
+                "Causal guard accepted diff for cluster '%s': %s",
+                cluster.key, reason
+            )
             fix_text = _extract_fix_from_diff(diff, success_fps[0])
         elif best_success_code:
             fix_text = "Apply the working solution pattern"
@@ -278,15 +345,18 @@ class PatternExtractor:
 
         # Only produce a lesson if we found something actionable
         if not fix_text and not symptom:
+            logger.debug("Cluster '%s': no actionable fix or symptom identified", cluster.key)
             return []
 
-        # Determine task metadata from the cluster
+        # Determine task metadata and explicit scope
         task_id = cluster.key if cluster.scope == "task_id" else ""
         task_family = ""
         if cluster.scope == "task_family":
             task_family = cluster.key
         elif cluster.successes:
             task_family = cluster.successes[0].task_family
+
+        scope = LessonScope.SPECIFIC if cluster.scope == "task_id" else LessonScope.FAMILY
 
         # Build provenance
         source_ids = (
@@ -308,9 +378,14 @@ class PatternExtractor:
             task_id=task_id,
             task_family=task_family,
             confidence=0.5,  # starts neutral, moves with evidence
-            tags=[f"auto-extracted", f"scope:{cluster.scope}"],
+            scope=scope,
+            tags=[f"auto-extracted", f"scope:{scope.value}"],
         )
 
+        logger.info(
+            "Extracted lesson %s for cluster '%s' (scope=%s, symptom='%s')",
+            lesson.id, cluster.key, scope.value, symptom[:60]
+        )
         return [lesson]
 
     def _best_write_content(

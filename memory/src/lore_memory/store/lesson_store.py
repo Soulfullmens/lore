@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 
 from ..models import (
     Lesson,
+    LessonScope,
+    LessonType,
     MemoryKind,
     RetrievedMemory,
     Vector,
@@ -43,6 +45,11 @@ def _lesson_to_dict(lesson: Lesson) -> dict:
         "confidence": lesson.confidence,
         "times_applied": lesson.times_applied,
         "times_helped": lesson.times_helped,
+        "times_harmed": getattr(lesson, "times_harmed", 0),
+        "model_confidence": getattr(lesson, "model_confidence", {}),
+        "scope": lesson.scope.value if hasattr(lesson.scope, "value") else str(getattr(lesson, "scope", "specific")),
+        "lesson_type": lesson.lesson_type.value if hasattr(lesson.lesson_type, "value") else str(getattr(lesson, "lesson_type", "positive")),
+        "parent_lesson_id": getattr(lesson, "parent_lesson_id", ""),
         "tags": lesson.tags,
         "created_at": lesson.created_at.isoformat() if isinstance(lesson.created_at, datetime) else str(lesson.created_at),
         "last_used": lesson.last_used.isoformat() if isinstance(lesson.last_used, datetime) else None,
@@ -67,6 +74,18 @@ def _dict_to_lesson(d: dict) -> Lesson:
         except ValueError:
             pass
 
+    raw_scope = d.get("scope", "specific")
+    try:
+        scope = LessonScope(raw_scope)
+    except ValueError:
+        scope = LessonScope.SPECIFIC
+
+    raw_type = d.get("lesson_type", "positive")
+    try:
+        lesson_type = LessonType(raw_type)
+    except ValueError:
+        lesson_type = LessonType.POSITIVE
+
     return Lesson(
         symptom=d.get("symptom", ""),
         fix=d.get("fix", ""),
@@ -78,6 +97,11 @@ def _dict_to_lesson(d: dict) -> Lesson:
         confidence=d.get("confidence", 0.5),
         times_applied=d.get("times_applied", 0),
         times_helped=d.get("times_helped", 0),
+        times_harmed=d.get("times_harmed", 0),
+        model_confidence=d.get("model_confidence", {}),
+        scope=scope,
+        lesson_type=lesson_type,
+        parent_lesson_id=d.get("parent_lesson_id", ""),
         tags=d.get("tags", []),
         id=d.get("id", ""),
         created_at=created_at,
@@ -168,11 +192,13 @@ class SqliteLessonStore:
         )
         self._conn.commit()
 
-    def update_confidence(self, lesson_id: str, *, helped: bool) -> None:
+    def update_confidence(
+        self, lesson_id: str, *, helped: bool, harmed: bool = False, model: str = ""
+    ) -> None:
         """Update confidence counters after a lesson is applied.
 
-        This is the verification loop: each time a lesson is retrieved
-        and used, we track whether it actually helped.
+        Tracks whether it helped or harmed, updating global and per-model
+        Bayesian posteriors.
         """
         row = self._conn.execute(
             "SELECT payload FROM lessons WHERE id = ?", (lesson_id,)
@@ -184,6 +210,12 @@ class SqliteLessonStore:
         lesson.times_applied += 1
         if helped:
             lesson.times_helped += 1
+        if harmed:
+            lesson.times_harmed += 1
+
+        if model:
+            lesson.update_model_confidence(model, helped=helped, harmed=harmed)
+
         lesson.confidence = lesson.bayesian_confidence()
         lesson.last_used = utcnow()
 
@@ -209,37 +241,42 @@ class SqliteLessonStore:
         *,
         exclude_ids: Collection[str] = (),
         min_confidence: float = 0.0,
+        model: str = "",
     ) -> list[RetrievedMemory]:
         """k nearest lessons by score = cosine_similarity × bayesian_confidence.
 
-        This is the key difference from episode search: lessons are ranked
-        by proven utility, not just embedding similarity.
+        Ranks lessons by relevance × empirical confidence (optionally model-specific).
+        Filters out negative lessons (guards) from direct injection.
         """
         exclude = set(exclude_ids)
         rows = list(self._conn.execute(
-            "SELECT id, vector, confidence, payload FROM lessons "
-            "WHERE confidence >= ?",
-            (min_confidence,),
+            "SELECT id, vector, confidence, payload FROM lessons",
         ))
 
-        scored: list[tuple[float, str, float, str]] = []
+        scored: list[tuple[float, str, float, Lesson]] = []
         for row in rows:
             row_id = row["id"]
             if row_id in exclude:
                 continue
+            payload = json.loads(row["payload"])
+            lesson = _dict_to_lesson(payload)
+            # Negative lessons are guards, not positive advice
+            if lesson.lesson_type == LessonType.NEGATIVE:
+                continue
+
+            conf = lesson.bayesian_confidence(model=model)
+            if conf < min_confidence:
+                continue
+
             relevance = _cosine(vector, _unpack(row["vector"]))
-            confidence = row["confidence"]
-            # Combined score: relevance × confidence
-            score = relevance * confidence
-            scored.append((score, row_id, confidence, row["payload"]))
+            score = relevance * conf
+            scored.append((score, row_id, conf, lesson))
 
         scored.sort(key=lambda t: t[0], reverse=True)
 
         out: list[RetrievedMemory] = []
-        for score, lid, conf, payload_json in scored[:k]:
-            lesson = _dict_to_lesson(json.loads(payload_json))
-            # Format lesson content for system prompt injection
-            content = _format_lesson_for_retrieval(lesson)
+        for score, lid, conf, lesson in scored[:k]:
+            content = _format_lesson_for_retrieval(lesson, model=model)
             out.append(
                 RetrievedMemory(
                     kind=MemoryKind.LESSON,
@@ -252,6 +289,7 @@ class SqliteLessonStore:
                         "confidence": conf,
                         "times_applied": lesson.times_applied,
                         "times_helped": lesson.times_helped,
+                        "scope": lesson.scope.value,
                     },
                 )
             )
@@ -285,7 +323,7 @@ class SqliteLessonStore:
 # Formatting
 # --------------------------------------------------------------------------- #
 
-def _format_lesson_for_retrieval(lesson: Lesson) -> str:
+def _format_lesson_for_retrieval(lesson: Lesson, model: str = "") -> str:
     """Format a lesson into a compact, actionable prompt injection.
 
     Lessons are ~100 tokens vs ~500+ for raw episodes — the 5x compression
@@ -293,8 +331,13 @@ def _format_lesson_for_retrieval(lesson: Lesson) -> str:
     """
     parts = []
 
+    header = []
     if lesson.task_family:
-        parts.append(f"[{lesson.task_family}]")
+        header.append(lesson.task_family)
+    if lesson.scope:
+        header.append(f"scope:{lesson.scope.value}")
+    if header:
+        parts.append(f"[{' | '.join(header)}]")
 
     if lesson.symptom:
         parts.append(f"Symptom: {lesson.symptom}")
@@ -305,7 +348,7 @@ def _format_lesson_for_retrieval(lesson: Lesson) -> str:
     if lesson.rationale:
         parts.append(f"Why: {lesson.rationale}")
 
-    conf = lesson.bayesian_confidence()
+    conf = lesson.bayesian_confidence(model=model)
     parts.append(f"(confidence: {conf:.2f}, verified {lesson.times_helped}/{lesson.times_applied} times)")
 
     return "\n".join(parts)

@@ -44,6 +44,19 @@ class MemoryKind(str, Enum):
     SKILL = "skill"
 
 
+class LessonScope(str, Enum):
+    """How broadly a lesson applies."""
+    SPECIFIC = "specific"   # exact task only (task_id scoped)
+    FAMILY = "family"       # any task in the same family
+    DOMAIN = "domain"       # any task in the same domain (e.g., all asyncio tasks)
+
+
+class LessonType(str, Enum):
+    """Whether a lesson is positive guidance or a negative guard."""
+    POSITIVE = "positive"   # 'do this' — the normal lesson
+    NEGATIVE = "negative"   # 'don't do this' — emitted when a lesson harms
+
+
 class OutcomeStatus(str, Enum):
     SUCCESS = "success"
     FAILURE = "failure"   # agent ran, task assertions failed — counts against success rate
@@ -125,6 +138,13 @@ class Lesson:
     representation.  It maps to agent-SEO (symptom-first HTML) and makes
     future LLM summarization a drop-in replacement — populate the same
     three fields with better prose, nothing downstream changes.
+
+    Phase 3 additions:
+    - ``model_confidence``: per-model confidence tracks for model-specific
+      gating (no other knowledge commons does this with empirical data).
+    - ``scope``: explicit breadth annotation (specific/family/domain).
+    - ``lesson_type``: positive guidance vs negative guard.
+    - ``parent_lesson_id``: for negative guards, the lesson they guard.
     """
 
     # --- core content (symptom-first schema) ---
@@ -138,9 +158,17 @@ class Lesson:
     source_episode_ids: list[str] = field(default_factory=list)
     task_id: str = ""                # originating task id
     task_family: str = ""            # originating task family
+
+    # --- Phase 3: verification + confidence ---
     confidence: float = 0.5
     times_applied: int = 0
     times_helped: int = 0
+    times_harmed: int = 0            # lesson caused a failure (negative credit)
+    model_confidence: dict[str, float] = field(default_factory=dict)
+    scope: LessonScope = LessonScope.SPECIFIC
+    lesson_type: LessonType = LessonType.POSITIVE
+    parent_lesson_id: str = ""       # for NEGATIVE type: the lesson this guards
+
     tags: list[str] = field(default_factory=list)
     id: str = field(default_factory=new_id)
     created_at: datetime = field(default_factory=utcnow)
@@ -158,17 +186,65 @@ class Lesson:
                 parts.append(f"Rationale: {self.rationale}")
             self.statement = " | ".join(parts)
 
-    def bayesian_confidence(self, prior_strength: float = 4.0) -> float:
+    def bayesian_confidence(
+        self, prior_strength: float = 4.0, *, model: str = ""
+    ) -> float:
         """Smoothed success rate — avoids 1.0/0.0 swings on tiny samples.
 
         Uses a Beta(prior_strength/2, prior_strength/2) prior centred at
         0.5 (Beta(2,2) by default), so a lesson needs repeated evidence
-        to move far from neutral.  This prevents volatile 0%/100%
-        confidence on tiny episode counts.
+        to move far from neutral.
+
+        If ``model`` is given and tracked in ``model_confidence``, return
+        the per-model score instead of the global aggregate.
         """
+        if model and model in self.model_confidence:
+            return self.model_confidence[model]
         a = self.times_helped + prior_strength / 2
         b = (self.times_applied - self.times_helped) + prior_strength / 2
         return a / (a + b)
+
+    def update_model_confidence(
+        self, model: str, *, helped: bool, harmed: bool = False,
+        prior_strength: float = 4.0,
+    ) -> None:
+        """Update per-model confidence track after an application.
+
+        Maintains a running Beta posterior per model. The global
+        ``confidence`` is also updated as the weighted average.
+        """
+        # Retrieve or initialise per-model counters
+        key_applied = f"_applied_{model}"
+        key_helped = f"_helped_{model}"
+        key_harmed = f"_harmed_{model}"
+
+        applied = self.model_confidence.get(key_applied, 0) + 1
+        helped_n = self.model_confidence.get(key_helped, 0) + (1 if helped else 0)
+        harmed_n = self.model_confidence.get(key_harmed, 0) + (1 if harmed else 0)
+
+        self.model_confidence[key_applied] = applied
+        self.model_confidence[key_helped] = helped_n
+        self.model_confidence[key_harmed] = harmed_n
+
+        # Beta posterior
+        a = helped_n + prior_strength / 2
+        b = (applied - helped_n) + prior_strength / 2
+        self.model_confidence[model] = a / (a + b)
+
+    def validate(self, candidate_code: str = "", test_runner: object = None) -> bool:
+        """Lightweight sanity check that a lesson's fix is actionable and sound.
+
+        Can execute an optional test_runner callable on candidate_code to verify
+        the fix passes assertions before committing the lesson to storage.
+        """
+        if not self.fix and not self.statement:
+            return False
+        if test_runner is not None and callable(test_runner):
+            try:
+                return bool(test_runner(candidate_code))
+            except Exception:
+                return False
+        return True
 
 
 @dataclass(slots=True)

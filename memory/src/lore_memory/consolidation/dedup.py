@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..models import Lesson, Vector
+from ..models import Lesson, LessonScope, Vector
 
 
 def _cosine(a: Vector, b: Vector) -> float:
@@ -152,13 +152,16 @@ class LessonDeduplicator:
         if abs(conf_diff) > 0.1:
             return a if conf_diff > 0 else b
 
-        # Scope breadth: family-scoped > task-scoped
-        a_broad = bool(a.task_family and not a.task_id)
-        b_broad = bool(b.task_family and not b.task_id)
-        if a_broad and not b_broad:
-            return a
-        if b_broad and not a_broad:
-            return b
+        # Scope breadth: DOMAIN > FAMILY > SPECIFIC
+        scope_rank = {
+            LessonScope.DOMAIN: 3,
+            LessonScope.FAMILY: 2,
+            LessonScope.SPECIFIC: 1,
+        }
+        a_rank = scope_rank.get(a.scope, 1) if hasattr(a, "scope") else 1
+        b_rank = scope_rank.get(b.scope, 1) if hasattr(b, "scope") else 1
+        if a_rank != b_rank:
+            return a if a_rank > b_rank else b
 
         # More provenance
         if len(a.source_episode_ids) > len(b.source_episode_ids):
