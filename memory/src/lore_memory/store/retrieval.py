@@ -88,6 +88,7 @@ class EpisodicMemoryBackend:
         *,
         k: int = 5,
         exclude_ids: Collection[str] = (),
+        **kwargs: object,
     ) -> list[RetrievedMemory]:
         """Retrieve the k nearest successful episodes to the query text.
 
@@ -128,22 +129,45 @@ class EpisodicMemoryBackend:
 
 
 # --------------------------------------------------------------------------- #
-# Phase 2 — Consolidated retrieval (lessons first, episodes fallback)
+# Helper for formatting retrieved lessons
+# --------------------------------------------------------------------------- #
+
+def _format_lesson_retrieved(lesson: Lesson, score: float, model: str = "") -> RetrievedMemory:
+    from .lesson_store import _format_lesson_for_retrieval
+    content = _format_lesson_for_retrieval(lesson, model=model)
+    conf = lesson.bayesian_confidence(model=model)
+    return RetrievedMemory(
+        kind=MemoryKind.LESSON,
+        id=lesson.id,
+        content=content,
+        score=float(score),
+        metadata={
+            "task_id": lesson.task_id,
+            "task_family": lesson.task_family,
+            "confidence": conf,
+            "times_applied": lesson.times_applied,
+            "times_helped": lesson.times_helped,
+            "scope": lesson.scope.value if hasattr(lesson.scope, "value") else str(lesson.scope),
+        },
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2/3 — Consolidated retrieval (4-tier hierarchical fast-path)
 # --------------------------------------------------------------------------- #
 
 class ConsolidatingMemoryBackend:
-    """MemoryBackend with lessons-first retrieval and offline consolidation.
+    """MemoryBackend with hierarchical lessons-first retrieval and offline consolidation.
 
-    The key upgrade over EpisodicMemoryBackend:
-    - ``consolidate()`` actually runs: clusters episodes, extracts lessons,
-      deduplicates, and stores them in a LessonStore.
-    - ``retrieve()`` checks lessons first (compact, ~100 tokens), then
-      falls back to episodes if no relevant lessons exist.
-    - Consolidation is **idempotent**: running it twice on the same
-      episode set produces the same lesson set.
-
-    Token budget: lessons are ~100 tokens vs ~500+ for episodes.
-    This is where the 5x compression pays for itself.
+    Phase 3 upgrades:
+    - 4-tier hierarchical fast-path retrieval:
+        Tier 1: exact task_id match + GLOBAL scope (<1ms)
+        Tier 2: task_family match + DOMAIN scope (<5ms)
+        Tier 3: cosine embedding search with model gating and negative guard filtering (<20ms)
+        Tier 4: fallback to raw episodes (<50ms)
+    - Active model-specific gating and untested model policy (``inject_untested``)
+    - Automatic suppression of lessons blocked by active negative guards
+    - Exposes ``lesson_store`` and ``episode_store`` for verification and reflection
     """
 
     def __init__(
@@ -155,11 +179,17 @@ class ConsolidatingMemoryBackend:
         db_path: str = ":memory:",
         dim: int = 256,
         retrieve_outcomes: Sequence[OutcomeStatus] = (OutcomeStatus.SUCCESS,),
+        model: str = "",
+        inject_untested: bool = True,
+        hierarchical: bool = True,
     ) -> None:
         self._embedder = embedder or HashEmbedder(dim=dim)
         self._episode_store = episode_store or SqliteEpisodeStore(db_path, dim=self._embedder.dim)
         self._lesson_store = lesson_store or SqliteLessonStore(db_path, dim=self._embedder.dim)
         self._retrieve_outcomes = retrieve_outcomes
+        self._model = model
+        self._inject_untested = inject_untested
+        self._hierarchical = hierarchical
 
         self._clusterer = EpisodeClusterer()
         self._extractor = PatternExtractor()
@@ -167,6 +197,14 @@ class ConsolidatingMemoryBackend:
 
         # Track which episodes have already been consolidated (idempotency)
         self._consolidated_episode_ids: set[str] = set()
+
+    @property
+    def lesson_store(self) -> SqliteLessonStore:
+        return self._lesson_store
+
+    @property
+    def episode_store(self) -> SqliteEpisodeStore:
+        return self._episode_store
 
     # ---- MemoryBackend protocol ------------------------------------------ #
 
@@ -183,33 +221,81 @@ class ConsolidatingMemoryBackend:
         *,
         k: int = 5,
         exclude_ids: Collection[str] = (),
+        task_id: str = "",
+        task_family: str = "",
+        model: str = "",
+        **kwargs: object,
     ) -> list[RetrievedMemory]:
-        """Lessons-first retrieval with episode fallback.
+        """4-tier hierarchical fast-path retrieval with episode fallback:
 
-        1. Search lessons first (compact, confidence-weighted).
-        2. If fewer than k results, backfill from episodes.
-        3. Return combined results, capped at k.
-
-        This is where the token budget savings come from: a lesson is
-        ~100 tokens vs ~500+ for a raw episode trajectory.
+        1. Tier 1: exact task_id match + GLOBAL scope (<1ms)
+        2. Tier 2: task_family match + DOMAIN scope (<5ms)
+        3. Tier 3: cosine embedding search on lessons with guard filtering (<20ms)
+        4. Tier 4: fallback to raw episodes (<50ms)
         """
-        vec = self._embedder.embed([query])[0]
+        active_model = model or self._model
+        seen_ids: set[str] = set(exclude_ids)
         results: list[RetrievedMemory] = []
 
-        # --- Tier 1: Lessons (compact, confidence-weighted) ---
-        if self._lesson_store.count() > 0:
-            lesson_results = self._lesson_store.search(
-                vec, k, exclude_ids=exclude_ids
-            )
-            results.extend(lesson_results)
+        # --- Hierarchical Fast Paths (Tier 1 & Tier 2) ---
+        if self._hierarchical and self._lesson_store.count() > 0:
+            # Tier 1: Task ID match + GLOBAL scope
+            if task_id:
+                t1_lessons = self._lesson_store.get_by_task_id(
+                    task_id,
+                    model=active_model,
+                    inject_untested=self._inject_untested,
+                    include_global=True,
+                )
+                for lesson in t1_lessons:
+                    if lesson.id not in seen_ids:
+                        conf = lesson.bayesian_confidence(model=active_model)
+                        score = 1.0 * conf
+                        results.append(_format_lesson_retrieved(lesson, score, active_model))
+                        seen_ids.add(lesson.id)
+                        if len(results) >= k:
+                            return results[:k]
 
-        # --- Tier 2: Episodes (fallback if lessons insufficient) ---
+            # Tier 2: Task Family match + DOMAIN scope
+            if len(results) < k and task_family:
+                t2_lessons = self._lesson_store.get_by_task_family(
+                    task_family,
+                    model=active_model,
+                    inject_untested=self._inject_untested,
+                    include_domain=True,
+                )
+                for lesson in t2_lessons:
+                    if lesson.id not in seen_ids:
+                        conf = lesson.bayesian_confidence(model=active_model)
+                        score = 0.9 * conf
+                        results.append(_format_lesson_retrieved(lesson, score, active_model))
+                        seen_ids.add(lesson.id)
+                        if len(results) >= k:
+                            return results[:k]
+
+        # --- Tier 3: Cosine Embedding Search on Lessons ---
+        remaining = k - len(results)
+        if remaining > 0 and self._lesson_store.count() > 0:
+            vec = self._embedder.embed([query])[0]
+            lesson_results = self._lesson_store.search(
+                vec,
+                remaining,
+                exclude_ids=seen_ids,
+                model=active_model,
+                inject_untested=self._inject_untested,
+            )
+            for r in lesson_results:
+                results.append(r)
+                seen_ids.add(r.id)
+
+        # --- Tier 4: Fallback to Raw Episodes ---
         remaining = k - len(results)
         if remaining > 0 and self._episode_store.count() > 0:
-            # Exclude any episodes whose lessons we already retrieved
-            lesson_exclude = set(exclude_ids)
+            vec = self._embedder.embed([query])[0]
             episode_results = self._episode_store.search(
-                vec, remaining, exclude_ids=lesson_exclude,
+                vec,
+                remaining,
+                exclude_ids=seen_ids,
                 outcomes=self._retrieve_outcomes,
             )
             results.extend(episode_results)

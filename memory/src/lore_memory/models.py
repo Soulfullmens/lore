@@ -49,6 +49,7 @@ class LessonScope(str, Enum):
     SPECIFIC = "specific"   # exact task only (task_id scoped)
     FAMILY = "family"       # any task in the same family
     DOMAIN = "domain"       # any task in the same domain (e.g., all asyncio tasks)
+    GLOBAL = "global"       # universal (e.g., python syntax, standard lib)
 
 
 class LessonType(str, Enum):

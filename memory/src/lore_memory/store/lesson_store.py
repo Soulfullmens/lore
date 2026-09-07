@@ -2,8 +2,14 @@
 
 Same architectural pattern as SqliteEpisodeStore (SQLite, cosine search,
 L2-normalized vectors), but with:
+- Hierarchical fast-path retrieval:
+    * Tier 1: exact task_id match + GLOBAL scope (<1ms)
+    * Tier 2: task_family match + DOMAIN scope (<5ms)
+    * Tier 3: cosine embedding search with guard filtering (<20ms)
 - Confidence-weighted ranking: ``score = relevance × bayesian_confidence``
-- ``update_confidence(lesson_id, helped)`` for the verification loop
+- Model-specific gating and untested model policy (``inject_untested`` flag)
+- Negative guard indexing and O(1) set-based suppression
+- ``update_confidence(lesson_id, helped, harmed, model)`` for the verification loop
 - Idempotent upsert (same lesson id = update, not duplicate)
 """
 
@@ -127,12 +133,34 @@ def _unpack(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{n}f", blob))
 
 
+def _get_lesson_confidence(
+    lesson: Lesson,
+    *,
+    model: str = "",
+    inject_untested: bool = True,
+) -> float:
+    """Evaluate confidence for a specific model under untested-model policy.
+
+    If model is given and tracked, return model_confidence[model].
+    If model is untested:
+      - if inject_untested is False -> 0.0 (strict gating)
+      - if inject_untested is True -> global bayesian confidence
+    """
+    if model:
+        if model in lesson.model_confidence:
+            return lesson.model_confidence[model]
+        if not inject_untested:
+            return 0.0
+    return lesson.bayesian_confidence()
+
+
 # --------------------------------------------------------------------------- #
 # SqliteLessonStore
 # --------------------------------------------------------------------------- #
 
 class SqliteLessonStore:
-    """SQLite-backed lesson storage with cosine search and confidence weighting.
+    """SQLite-backed lesson storage with cosine search, hierarchical lookup,
+    and causal negative-guard suppression.
 
     Thread-safety: one connection per store instance, same as SqliteEpisodeStore.
     """
@@ -148,21 +176,37 @@ class SqliteLessonStore:
         self._conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS lessons (
-                id          TEXT PRIMARY KEY,
-                task_id     TEXT NOT NULL DEFAULT '',
-                task_family TEXT NOT NULL DEFAULT '',
-                confidence  REAL NOT NULL DEFAULT 0.5,
-                times_applied INTEGER NOT NULL DEFAULT 0,
-                times_helped  INTEGER NOT NULL DEFAULT 0,
-                created_at  TEXT NOT NULL,
-                vector      BLOB NOT NULL,
-                payload     TEXT NOT NULL
+                id               TEXT PRIMARY KEY,
+                task_id          TEXT NOT NULL DEFAULT '',
+                task_family      TEXT NOT NULL DEFAULT '',
+                confidence       REAL NOT NULL DEFAULT 0.5,
+                times_applied    INTEGER NOT NULL DEFAULT 0,
+                times_helped     INTEGER NOT NULL DEFAULT 0,
+                scope            TEXT NOT NULL DEFAULT 'specific',
+                lesson_type      TEXT NOT NULL DEFAULT 'positive',
+                parent_lesson_id TEXT NOT NULL DEFAULT '',
+                created_at       TEXT NOT NULL,
+                vector           BLOB NOT NULL,
+                payload          TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_lessons_task ON lessons(task_id);
             CREATE INDEX IF NOT EXISTS ix_lessons_family ON lessons(task_family);
             CREATE INDEX IF NOT EXISTS ix_lessons_confidence ON lessons(confidence);
+            CREATE INDEX IF NOT EXISTS ix_lessons_parent ON lessons(parent_lesson_id);
+            CREATE INDEX IF NOT EXISTS ix_lessons_scope ON lessons(scope);
+            CREATE INDEX IF NOT EXISTS ix_lessons_type ON lessons(lesson_type);
             """
         )
+        # Migrations in case table was created with older schema
+        for col_def in (
+            "scope TEXT NOT NULL DEFAULT 'specific'",
+            "lesson_type TEXT NOT NULL DEFAULT 'positive'",
+            "parent_lesson_id TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                self._conn.execute(f"ALTER TABLE lessons ADD COLUMN {col_def}")
+            except sqlite3.OperationalError:
+                pass
         self._conn.commit()
 
     # --- write path --------------------------------------------------------
@@ -174,10 +218,15 @@ class SqliteLessonStore:
         """
         if len(vector) != self.dim:
             raise ValueError(f"vector dim {len(vector)} != store dim {self.dim}")
+        
+        scope_str = lesson.scope.value if hasattr(lesson.scope, "value") else str(lesson.scope)
+        type_str = lesson.lesson_type.value if hasattr(lesson.lesson_type, "value") else str(lesson.lesson_type)
+
         self._conn.execute(
             "INSERT OR REPLACE INTO lessons "
             "(id, task_id, task_family, confidence, times_applied, times_helped, "
-            "created_at, vector, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "scope, lesson_type, parent_lesson_id, created_at, vector, payload) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 lesson.id,
                 lesson.task_id,
@@ -185,6 +234,9 @@ class SqliteLessonStore:
                 lesson.bayesian_confidence(),
                 lesson.times_applied,
                 lesson.times_helped,
+                scope_str,
+                type_str,
+                lesson.parent_lesson_id,
                 lesson.created_at.isoformat() if isinstance(lesson.created_at, datetime) else str(lesson.created_at),
                 _pack(vector),
                 json.dumps(_lesson_to_dict(lesson), ensure_ascii=False),
@@ -232,6 +284,106 @@ class SqliteLessonStore:
         )
         self._conn.commit()
 
+    # --- guard methods -----------------------------------------------------
+
+    def get_guards_for_parent(self, parent_lesson_id: str) -> list[Lesson]:
+        """Return all negative guard lessons associated with a parent lesson."""
+        rows = self._conn.execute(
+            "SELECT payload FROM lessons WHERE parent_lesson_id = ? AND lesson_type = 'negative'",
+            (parent_lesson_id,),
+        ).fetchall()
+        return [_dict_to_lesson(json.loads(r["payload"])) for r in rows]
+
+    def get_active_guards(
+        self,
+        parent_lesson_ids: Collection[str],
+        *,
+        model: str = "",
+    ) -> set[str]:
+        """Return set of parent_lesson_ids that are actively blocked for model.
+
+        Uses indexed parent lookup for O(1) set matching.
+        """
+        if not parent_lesson_ids:
+            return set()
+        
+        placeholders = ",".join("?" for _ in parent_lesson_ids)
+        rows = self._conn.execute(
+            f"SELECT payload FROM lessons WHERE parent_lesson_id IN ({placeholders}) AND lesson_type = 'negative'",
+            list(parent_lesson_ids),
+        ).fetchall()
+
+        blocked: set[str] = set()
+        for r in rows:
+            guard = _dict_to_lesson(json.loads(r["payload"]))
+            if not model:
+                blocked.add(guard.parent_lesson_id)
+            elif not guard.model_confidence or model in guard.model_confidence:
+                blocked.add(guard.parent_lesson_id)
+        return blocked
+
+    # --- hierarchical fast-path queries -----------------------------------
+
+    def get_by_task_id(
+        self,
+        task_id: str,
+        *,
+        model: str = "",
+        min_confidence: float = 0.0,
+        inject_untested: bool = True,
+        include_global: bool = True,
+    ) -> list[Lesson]:
+        """Tier 1 lookup: exact task_id match and/or GLOBAL scoped lessons."""
+        query = (
+            "SELECT payload FROM lessons WHERE "
+            "(task_id = ? OR (scope = 'global' AND ? = 1)) "
+            "AND lesson_type != 'negative'"
+        )
+        rows = self._conn.execute(query, (task_id, 1 if include_global else 0)).fetchall()
+        candidates = [_dict_to_lesson(json.loads(r["payload"])) for r in rows]
+        if not candidates:
+            return []
+
+        active_guards = self.get_active_guards([c.id for c in candidates], model=model)
+        valid: list[Lesson] = []
+        for c in candidates:
+            if c.id in active_guards:
+                continue
+            conf = _get_lesson_confidence(c, model=model, inject_untested=inject_untested)
+            if conf >= min_confidence:
+                valid.append(c)
+        return valid
+
+    def get_by_task_family(
+        self,
+        task_family: str,
+        *,
+        model: str = "",
+        min_confidence: float = 0.0,
+        inject_untested: bool = True,
+        include_domain: bool = True,
+    ) -> list[Lesson]:
+        """Tier 2 lookup: exact task_family match and/or DOMAIN scoped lessons."""
+        query = (
+            "SELECT payload FROM lessons WHERE "
+            "(task_family = ? OR (scope = 'domain' AND ? = 1)) "
+            "AND lesson_type != 'negative'"
+        )
+        rows = self._conn.execute(query, (task_family, 1 if include_domain else 0)).fetchall()
+        candidates = [_dict_to_lesson(json.loads(r["payload"])) for r in rows]
+        if not candidates:
+            return []
+
+        active_guards = self.get_active_guards([c.id for c in candidates], model=model)
+        valid: list[Lesson] = []
+        for c in candidates:
+            if c.id in active_guards:
+                continue
+            conf = _get_lesson_confidence(c, model=model, inject_untested=inject_untested)
+            if conf >= min_confidence:
+                valid.append(c)
+        return valid
+
     # --- read path ---------------------------------------------------------
 
     def search(
@@ -242,33 +394,42 @@ class SqliteLessonStore:
         exclude_ids: Collection[str] = (),
         min_confidence: float = 0.0,
         model: str = "",
+        inject_untested: bool = True,
     ) -> list[RetrievedMemory]:
         """k nearest lessons by score = cosine_similarity × bayesian_confidence.
 
         Ranks lessons by relevance × empirical confidence (optionally model-specific).
-        Filters out negative lessons (guards) from direct injection.
+        Filters out negative lessons (guards) and suppresses lessons with active guards.
         """
         exclude = set(exclude_ids)
         rows = list(self._conn.execute(
-            "SELECT id, vector, confidence, payload FROM lessons",
+            "SELECT id, vector, confidence, payload FROM lessons WHERE lesson_type != 'negative'",
         ))
 
-        scored: list[tuple[float, str, float, Lesson]] = []
+        candidates: list[tuple[str, Lesson, list[float]]] = []
         for row in rows:
             row_id = row["id"]
             if row_id in exclude:
                 continue
             payload = json.loads(row["payload"])
             lesson = _dict_to_lesson(payload)
-            # Negative lessons are guards, not positive advice
-            if lesson.lesson_type == LessonType.NEGATIVE:
+            candidates.append((row_id, lesson, _unpack(row["vector"])))
+
+        if not candidates:
+            return []
+
+        active_guards = self.get_active_guards([c[0] for c in candidates], model=model)
+
+        scored: list[tuple[float, str, float, Lesson]] = []
+        for row_id, lesson, vec in candidates:
+            if row_id in active_guards:
                 continue
 
-            conf = lesson.bayesian_confidence(model=model)
+            conf = _get_lesson_confidence(lesson, model=model, inject_untested=inject_untested)
             if conf < min_confidence:
                 continue
 
-            relevance = _cosine(vector, _unpack(row["vector"]))
+            relevance = _cosine(vector, vec)
             score = relevance * conf
             scored.append((score, row_id, conf, lesson))
 

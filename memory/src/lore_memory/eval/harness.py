@@ -28,6 +28,16 @@ from enum import Enum
 from ..models import Episode, OutcomeStatus
 from ..protocols import Agent, MemoryBackend, Task, Tracer
 from ..protocols import NullTracer
+from ..verification import (
+    BaselineMissingError,
+    CausalAttribution,
+    CreditAssigner,
+    CreditReport,
+    GuardReport,
+    NegativeGuardGenerator,
+    Reflector,
+    SeedOutcome,
+)
 from .stats import Estimate, bootstrap_ci, welch_t
 
 
@@ -56,6 +66,9 @@ class RunConfig:
     k: int = 5                                # memories retrieved per task
     confidence: float = 0.95
     ablation: AblationConfig = field(default_factory=AblationConfig)
+    verify: bool = False                      # Phase 3: counterfactual verification loop
+    model: str = ""                           # Active model name (e.g. "openai/gpt-4o-mini")
+    baseline_cache: dict[tuple[str, int], bool] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -109,6 +122,8 @@ class HarnessReport:
     contaminated: bool                  # True if that delta is materially > 0
     ablation: list[AblationRecord] = field(default_factory=list)
     records: list[RunRecord] = field(default_factory=list)
+    verification: list[CreditReport] = field(default_factory=list)
+    guards: list[GuardReport] = field(default_factory=list)
 
     def improvement(self) -> float | None:
         """Success-rate lift of MEMORY over BASELINE on non-control tasks."""
@@ -157,14 +172,30 @@ class Harness:
         cfg = config or RunConfig()
         records: list[RunRecord] = []
         ablation: list[AblationRecord] = []
+        verification: list[CreditReport] = []
+        guards: list[GuardReport] = []
 
-        records += self._run_condition(Mode.BASELINE, baseline_factory, cfg)
+        baseline_records = self._run_condition(Mode.BASELINE, baseline_factory, cfg)
+        records += baseline_records
+
+        reflector: Reflector | None = None
+        if cfg.verify:
+            reflector = Reflector()
+            for r in baseline_records:
+                reflector.cache_baseline(SeedOutcome(task_id=r.task_id, seed=r.seed, success=r.success))
+
         if memory_factory is not None:
-            mem_records, mem_ablation = self._run_memory_condition(memory_factory, cfg)
+            mem_records, mem_ablation, v_reports, g_reports = self._run_memory_condition(
+                memory_factory, cfg, reflector=reflector
+            )
             records += mem_records
             ablation += mem_ablation
+            verification += v_reports
+            guards += g_reports
 
-        return self._build_report(records, ablation, cfg)
+        return self._build_report(
+            records, ablation, cfg, verification=verification, guards=guards
+        )
 
     def run_memory_only(
         self,
@@ -180,12 +211,26 @@ class Harness:
         cfg = config or RunConfig()
         records: list[RunRecord] = []
         ablation: list[AblationRecord] = []
+        verification: list[CreditReport] = []
+        guards: list[GuardReport] = []
 
-        mem_records, mem_ablation = self._run_memory_condition(memory_factory, cfg)
+        reflector: Reflector | None = None
+        if cfg.verify:
+            reflector = Reflector()
+            for (t_id, s), succ in cfg.baseline_cache.items():
+                reflector.cache_baseline(SeedOutcome(task_id=t_id, seed=s, success=succ))
+
+        mem_records, mem_ablation, v_reports, g_reports = self._run_memory_condition(
+            memory_factory, cfg, reflector=reflector
+        )
         records += mem_records
         ablation += mem_ablation
+        verification += v_reports
+        guards += g_reports
 
-        return self._build_report(records, ablation, cfg)
+        return self._build_report(
+            records, ablation, cfg, verification=verification, guards=guards
+        )
 
 
     # ----------------------------------------------------------------- #
@@ -205,25 +250,53 @@ class Harness:
         return out
 
     def _run_memory_condition(
-        self, factory: BackendFactory, cfg: RunConfig
-    ) -> tuple[list[RunRecord], list[AblationRecord]]:
-        """Memory condition, with the learning loops and ablation seam live.
-
-        Note the *ordering*: within a seed we let the engine consolidate
-        between passes, because compounding is the whole point — episode i
-        should be able to influence episode i+1. Baseline has no such loop,
-        which is exactly the asymmetry we are trying to measure.
-        """
+        self,
+        factory: BackendFactory,
+        cfg: RunConfig,
+        reflector: Reflector | None = None,
+    ) -> tuple[list[RunRecord], list[AblationRecord], list[CreditReport], list[GuardReport]]:
+        """Memory condition, with the learning loops, ablation, and verification live."""
         backend = factory()
         backend.setup()
         records: list[RunRecord] = []
         ablations: list[AblationRecord] = []
+        verification_reports: list[CreditReport] = []
+        guard_reports: list[GuardReport] = []
         rng = random.Random(1234)
+
+        lesson_store = getattr(backend, "lesson_store", None)
+        assigner = CreditAssigner(lesson_store) if (cfg.verify and lesson_store is not None) else None
+        guard_gen = NegativeGuardGenerator(lesson_store, embedder=getattr(backend, "_embedder", None)) if (cfg.verify and lesson_store is not None) else None
+
         try:
             for seed in cfg.seeds:
                 for task in self._tasks:
                     ep = self._attempt(task, backend, seed, cfg)
                     records.append(self._to_record(task, Mode.MEMORY, seed, ep))
+
+                    # Phase 3: Counterfactual verification & causal credit assignment
+                    if cfg.verify and reflector is not None:
+                        # Will raise BaselineMissingError if seed has no cached baseline!
+                        attribution = reflector.compare(
+                            SeedOutcome(
+                                task_id=task.id,
+                                seed=seed,
+                                success=ep.outcome.is_success,
+                                injected_lesson_ids=list(ep.injected_memory_ids),
+                            ),
+                            require_baseline=True,
+                        )
+                        if assigner is not None:
+                            for lid in ep.injected_memory_ids:
+                                c_rep = assigner.assign(
+                                    lid, attribution, model=cfg.model, task_id=task.id, seed=seed
+                                )
+                                verification_reports.append(c_rep)
+                                if attribution == CausalAttribution.CAUSED_FAIL and guard_gen is not None:
+                                    g_rep = guard_gen.maybe_emit(
+                                        lid, attribution, model=cfg.model, task_id=task.id
+                                    )
+                                    guard_reports.append(g_rep)
 
                     # Post-task learning loops (no-ops until their phase).
                     retrieved = []  # Phase 1+ agents attach this to the episode
@@ -243,7 +316,7 @@ class Harness:
                 backend.forget()
         finally:
             backend.close()
-        return records, ablations
+        return records, ablations, verification_reports, guard_reports
 
     # ----------------------------------------------------------------- #
     def _attempt(
@@ -305,6 +378,8 @@ class Harness:
         records: list[RunRecord],
         ablation: list[AblationRecord],
         cfg: RunConfig,
+        verification: list[CreditReport] | None = None,
+        guards: list[GuardReport] | None = None,
     ) -> HarnessReport:
         per_condition: dict[Mode, ConditionSummary] = {}
         for mode in {r.mode for r in records}:
@@ -327,6 +402,8 @@ class Harness:
             contaminated=contaminated,
             ablation=ablation,
             records=records,
+            verification=verification or [],
+            guards=guards or [],
         )
 
     @staticmethod

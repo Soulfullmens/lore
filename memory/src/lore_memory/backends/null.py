@@ -51,6 +51,7 @@ class NullMemoryBackend:
         *,
         k: int = 5,
         exclude_ids: Collection[str] = (),
+        **kwargs: object,
     ) -> list[RetrievedMemory]:
         return []
 

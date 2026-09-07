@@ -66,7 +66,11 @@ class ReActAgent:
 
         # --- read path: retrieve memories (ablation-aware) -------------- #
         retrieved: list[RetrievedMemory] = memory.retrieve(
-            task.prompt(), k=self._k, exclude_ids=tuple(ablate_ids)
+            task.prompt(),
+            k=self._k,
+            exclude_ids=tuple(ablate_ids),
+            task_id=task.id,
+            task_family=getattr(task, "family", ""),
         )
         system = build_system_prompt(retrieved)
 
