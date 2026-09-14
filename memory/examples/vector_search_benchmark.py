@@ -73,6 +73,13 @@ def _benchmark_scale(n: int, rng: random.Random) -> dict:
     # Generate query vectors
     queries = [_random_vector(rng) for _ in range(NUM_QUERIES)]
 
+    # --- Warmup pass (3 dry runs to prime SQLite cache, JIT, page buffers) ---
+    warmup_queries = [_random_vector(rng) for _ in range(3)]
+    for wq in warmup_queries:
+        if has_vec:
+            vec_store.search(wq, k=TOP_K, min_confidence=0.0, inject_untested=True)
+        py_store.search(wq, k=TOP_K, min_confidence=0.0, inject_untested=True)
+
     # --- Benchmark sqlite-vec ANN ---
     vec_times = []
     vec_results = []
@@ -103,15 +110,18 @@ def _benchmark_scale(n: int, rng: random.Random) -> dict:
                 recalls.append(len(v_set & p_set) / len(p_set))
         recall = sum(recalls) / len(recalls) if recalls else None
 
+    sorted_vec = sorted(vec_times) if vec_times else []
+    sorted_py = sorted(py_times) if py_times else []
+
     return {
         "n": n,
         "has_vec": has_vec,
         "vec_mean_ms": sum(vec_times) / len(vec_times) if vec_times else None,
-        "vec_p50_ms": sorted(vec_times)[len(vec_times) // 2] if vec_times else None,
-        "vec_p95_ms": sorted(vec_times)[int(len(vec_times) * 0.95)] if vec_times else None,
+        "vec_p50_ms": sorted_vec[len(sorted_vec) // 2] if sorted_vec else None,
+        "vec_p95_ms": sorted_vec[int(len(sorted_vec) * 0.95)] if sorted_vec else None,
         "py_mean_ms": sum(py_times) / len(py_times) if py_times else None,
-        "py_p50_ms": sorted(py_times)[len(py_times) // 2] if py_times else None,
-        "py_p95_ms": sorted(py_times)[int(len(py_times) * 0.95)] if py_times else None,
+        "py_p50_ms": sorted_py[len(sorted_py) // 2] if sorted_py else None,
+        "py_p95_ms": sorted_py[int(len(sorted_py) * 0.95)] if sorted_py else None,
         "recall": recall,
     }
 
