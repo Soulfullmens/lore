@@ -154,27 +154,48 @@ def _get_lesson_confidence(
     return lesson.bayesian_confidence()
 
 
+DEFAULT_VECTOR_DIM: int = 256
+
+
 # --------------------------------------------------------------------------- #
 # SqliteLessonStore
 # --------------------------------------------------------------------------- #
 
 class SqliteLessonStore:
     """SQLite-backed lesson storage with cosine search, hierarchical lookup,
-    and causal negative-guard suppression.
+    sqlite-vec ANN acceleration, and causal negative-guard suppression.
 
     Thread-safety: one connection per store instance, same as SqliteEpisodeStore.
     """
 
-    def __init__(self, db_path: str = ":memory:", *, dim: int = 256) -> None:
+    def __init__(
+        self,
+        db_path: str = ":memory:",
+        *,
+        dim: int = DEFAULT_VECTOR_DIM,
+        use_vec: bool = True,
+    ) -> None:
         self.db_path = db_path
         self.dim = dim
+        self.use_vec = use_vec
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        if self.use_vec:
+            self._try_load_vec()
         self._create_tables()
+
+    def _try_load_vec(self) -> None:
+        try:
+            import sqlite_vec
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+            self._conn.enable_load_extension(False)
+        except Exception:
+            self.use_vec = False
 
     def _create_tables(self) -> None:
         self._conn.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS lessons (
                 id               TEXT PRIMARY KEY,
                 task_id          TEXT NOT NULL DEFAULT '',
@@ -207,6 +228,18 @@ class SqliteLessonStore:
                 self._conn.execute(f"ALTER TABLE lessons ADD COLUMN {col_def}")
             except sqlite3.OperationalError:
                 pass
+
+        if self.use_vec:
+            try:
+                self._conn.execute(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS lesson_vectors USING vec0("
+                    f"lesson_id TEXT, "
+                    f"embedding float[{self.dim}] distance_metric=cosine"
+                    f");"
+                )
+            except sqlite3.OperationalError:
+                self.use_vec = False
+
         self._conn.commit()
 
     # --- write path --------------------------------------------------------
@@ -242,6 +275,17 @@ class SqliteLessonStore:
                 json.dumps(_lesson_to_dict(lesson), ensure_ascii=False),
             ),
         )
+
+        if self.use_vec:
+            try:
+                self._conn.execute("DELETE FROM lesson_vectors WHERE lesson_id = ?", (lesson.id,))
+                self._conn.execute(
+                    "INSERT INTO lesson_vectors(lesson_id, embedding) VALUES (?, ?)",
+                    (lesson.id, _pack(vector)),
+                )
+            except sqlite3.OperationalError:
+                pass
+
         self._conn.commit()
 
     def update_confidence(
@@ -398,10 +442,61 @@ class SqliteLessonStore:
     ) -> list[RetrievedMemory]:
         """k nearest lessons by score = cosine_similarity × bayesian_confidence.
 
-        Ranks lessons by relevance × empirical confidence (optionally model-specific).
-        Filters out negative lessons (guards) and suppresses lessons with active guards.
+        Uses native sqlite-vec ANN vector join when available, with seamless
+        fallback to Python brute-force cosine similarity.
         """
         exclude = set(exclude_ids)
+
+        if self.use_vec:
+            try:
+                fetch_k = max(k * 4, 30)
+                query = (
+                    "SELECT l.id, l.payload, v.distance "
+                    "FROM lesson_vectors v "
+                    "JOIN lessons l ON v.lesson_id = l.id "
+                    "WHERE v.embedding MATCH ? AND k = ? AND l.lesson_type != 'negative' "
+                    "ORDER BY v.distance"
+                )
+                rows = self._conn.execute(query, (_pack(vector), fetch_k)).fetchall()
+                if rows:
+                    active_guards = self.get_active_guards([r["id"] for r in rows], model=model)
+                    scored: list[tuple[float, str, float, Lesson]] = []
+                    for r in rows:
+                        row_id = r["id"]
+                        if row_id in exclude or row_id in active_guards:
+                            continue
+                        lesson = _dict_to_lesson(json.loads(r["payload"]))
+                        conf = _get_lesson_confidence(lesson, model=model, inject_untested=inject_untested)
+                        if conf < min_confidence:
+                            continue
+                        relevance = max(-1.0, min(1.0, 1.0 - float(r["distance"])))
+                        score = relevance * conf
+                        scored.append((score, row_id, conf, lesson))
+
+                    scored.sort(key=lambda t: t[0], reverse=True)
+                    out: list[RetrievedMemory] = []
+                    for score, lid, conf, lesson in scored[:k]:
+                        content = _format_lesson_for_retrieval(lesson, model=model)
+                        out.append(
+                            RetrievedMemory(
+                                kind=MemoryKind.LESSON,
+                                id=lid,
+                                content=content,
+                                score=float(score),
+                                metadata={
+                                    "task_id": lesson.task_id,
+                                    "task_family": lesson.task_family,
+                                    "confidence": conf,
+                                    "times_applied": lesson.times_applied,
+                                    "times_helped": lesson.times_helped,
+                                    "scope": lesson.scope.value,
+                                },
+                            )
+                        )
+                    return out
+            except Exception:
+                pass
+
         rows = list(self._conn.execute(
             "SELECT id, vector, confidence, payload FROM lessons WHERE lesson_type != 'negative'",
         ))

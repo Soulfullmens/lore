@@ -1,0 +1,20 @@
+id: acme-stream-timeout
+family: acme-stream
+is_control: false
+prompt: |
+  Fix `poll_with_retry(poller, max_retries)` in solution.py.
+  It polls for stream events using `await poller.poll(timeout_sec=0.05)`.
+  
+  Follow the Acme Resilience Protocol:
+  1. If `poller.poll()` raises `asyncio.TimeoutError` (or `TimeoutError`), this
+     represents a transient network pause. You must increment retry count,
+     apply a brief backoff (`await asyncio.sleep(0.005)`), and retry up to `max_retries`.
+  2. If consecutive timeouts exceed `max_retries`, raise `AcmeTimeoutExceededError`.
+  3. If `poller.poll()` raises `AcmeAuthError` or any other non-timeout exception,
+     this is a FATAL error: you must NOT retry or swallow it. Re-raise it immediately!
+  4. Return the list of successfully retrieved event payloads.
+  
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, client.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

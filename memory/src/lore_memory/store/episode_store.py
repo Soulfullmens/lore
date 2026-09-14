@@ -205,23 +205,26 @@ def _unpack(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{n}f", blob))
 
 
+DEFAULT_VECTOR_DIM: int = 256
+
+
 # --------------------------------------------------------------------------- #
 # Store
 # --------------------------------------------------------------------------- #
 
 class SqliteEpisodeStore:
-    """Persistent episode store backed by SQLite.
+    """Persistent episode store backed by SQLite with native sqlite-vec ANN acceleration.
 
-    Vector search is brute-force cosine by default (exact, sub-ms at Phase 1
-    scale). sqlite-vec is a drop-in accelerator behind the same interface.
+    Vector search uses sqlite-vec native ANN cosine search when available, with
+    graceful fallback to Python brute-force cosine.
     """
 
     def __init__(
         self,
         path: str | Path = ":memory:",
         *,
-        dim: int,
-        use_vec: bool = False,
+        dim: int = DEFAULT_VECTOR_DIM,
+        use_vec: bool = True,
     ) -> None:
         self.dim = dim
         self.use_vec = use_vec
@@ -233,13 +236,12 @@ class SqliteEpisodeStore:
 
     def _try_load_vec(self) -> None:
         try:
-            import sqlite_vec  # type: ignore
+            import sqlite_vec
             self._conn.enable_load_extension(True)
             sqlite_vec.load(self._conn)
             self._conn.enable_load_extension(False)
-        except Exception as e:
+        except Exception:
             self.use_vec = False
-            print(f"[episode_store] sqlite-vec unavailable ({e}); using Python cosine.")
 
     def _init_schema(self) -> None:
         self._conn.executescript(
@@ -258,6 +260,17 @@ class SqliteEpisodeStore:
             CREATE INDEX IF NOT EXISTS ix_episodes_family ON episodes(task_family);
             """
         )
+        if self.use_vec:
+            try:
+                self._conn.execute(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS episode_vectors USING vec0("
+                    f"episode_id TEXT, "
+                    f"embedding float[{self.dim}] distance_metric=cosine"
+                    f");"
+                )
+            except sqlite3.OperationalError:
+                self.use_vec = False
+
         self._conn.commit()
 
     # --- write path --------------------------------------------------------
@@ -280,6 +293,17 @@ class SqliteEpisodeStore:
                 json.dumps(_episode_to_dict(episode), ensure_ascii=False),
             ),
         )
+
+        if self.use_vec:
+            try:
+                self._conn.execute("DELETE FROM episode_vectors WHERE episode_id = ?", (episode.id,))
+                self._conn.execute(
+                    "INSERT INTO episode_vectors(episode_id, embedding) VALUES (?, ?)",
+                    (episode.id, _pack(vector)),
+                )
+            except sqlite3.OperationalError:
+                pass
+
         self._conn.commit()
 
     # --- read path ---------------------------------------------------------
@@ -299,6 +323,50 @@ class SqliteEpisodeStore:
         exclude_ids: the ablation seam — leave-one-out passes the target id here.
         """
         exclude = set(exclude_ids)
+        outcome_set = {o.value for o in outcomes} if outcomes is not None else None
+
+        if self.use_vec:
+            try:
+                q_blob = _pack(vector)
+                fetch_k = max(k * 4, 30)
+                query = (
+                    "SELECT e.id, e.payload, e.task_id, e.task_family, e.outcome, v.distance "
+                    "FROM episode_vectors v "
+                    "JOIN episodes e ON v.episode_id = e.id "
+                    "WHERE v.embedding MATCH ? AND k = ? "
+                    "ORDER BY v.distance"
+                )
+                rows = self._conn.execute(query, (q_blob, fetch_k)).fetchall()
+                if rows:
+                    out: list[RetrievedMemory] = []
+                    for r in rows:
+                        eid = r["id"]
+                        if eid in exclude:
+                            continue
+                        if outcome_set is not None and r["outcome"] not in outcome_set:
+                            continue
+                        ep = _dict_to_episode(json.loads(r["payload"]))
+                        similarity = max(-1.0, min(1.0, 1.0 - float(r["distance"])))
+                        out.append(
+                            RetrievedMemory(
+                                kind=MemoryKind.EPISODE,
+                                id=eid,
+                                content=_format_episode_for_retrieval(ep),
+                                score=float(similarity),
+                                metadata={
+                                    "task_id": ep.task_id,
+                                    "task_family": ep.task_family,
+                                    "outcome_status": ep.outcome.status.value,
+                                    "seed": ep.seed,
+                                },
+                            )
+                        )
+                        if len(out) >= k:
+                            break
+                    return out
+            except Exception:
+                pass
+
         rows = self._candidate_rows(outcomes)
 
         scored: list[tuple[float, str, str]] = []

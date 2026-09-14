@@ -1,0 +1,22 @@
+id: acme-stream-cleanup
+family: acme-stream
+is_control: false
+prompt: |
+  Fix `process_session(session, handler)` in solution.py.
+  It must open the session, stream messages from `session.stream_messages()`,
+  pass each message to `await handler(msg)`, and return the total count of
+  messages processed.
+  
+  Follow the Acme Stream Protocol:
+  1. You must await `session.open()` before streaming messages.
+  2. For every message yielded, await `handler(msg)` and increment the count.
+  3. You must ensure `await session.close()` is ALWAYS executed upon completion
+     or if any exception occurs during processing (resource cleanup guarantee).
+     Do not leak open connections or active sessions on error.
+  4. If `handler` raises an unhandled exception, the session must still be cleanly
+     closed before the exception bubbles up.
+  
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, client.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

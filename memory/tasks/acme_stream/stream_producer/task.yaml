@@ -1,0 +1,23 @@
+id: acme-stream-producer
+family: acme-stream
+is_control: false
+prompt: |
+  Fix `produce_stream(client, items, ready_event)` in solution.py.
+  It must publish each item in `items` to `client.publish(item)`.
+  
+  Follow the Acme Producer Protocol:
+  1. The client buffer has limited capacity (capacity=1) and experiences variable
+     consumer latency (seeded deterministically via seed=42).
+  2. To avoid buffer overflow and dropped messages, you MUST synchronize with
+     the consumer using the `ready_event` (an `asyncio.Event`):
+     - Before publishing each item, await `ready_event.wait()`.
+     - Reset the signal with `ready_event.clear()`.
+     - Then call `await client.publish(item)`.
+  3. Do NOT use arbitrary sleep delays (e.g. `asyncio.sleep()`); you must use
+     explicit event synchronization.
+  4. Return the total count of items published.
+  
+  Fix solution.py so that `python check.py` passes.
+entry_files: [solution.py, client.py, check.py]
+editable: [solution.py]
+eval_command: ["python", "check.py"]

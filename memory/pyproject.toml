@@ -27,7 +27,9 @@ classifiers = [
 # Phase 0: zero external dependencies. The harness, stats, protocols, and
 # models all use stdlib only. LLM SDKs and embedding libraries arrive at
 # Phase 1+ and live in optional dependency groups.
-dependencies = []
+dependencies = [
+    "sqlite-vec>=0.1.9",
+]
 
 [project.optional-dependencies]
 dev = [
