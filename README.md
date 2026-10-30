@@ -6,16 +6,65 @@
 [![Site](https://img.shields.io/badge/site-soulfullmens.github.io%2Flore-brightgreen)](https://soulfullmens.github.io/lore/)
 [![Code License: Apache-2.0](https://img.shields.io/badge/Code-Apache_2.0-blue.svg)](LICENSE)
 [![Corpus License: CC-BY-4.0](https://img.shields.io/badge/Corpus-CC--BY--4.0-lightgrey.svg)](LICENSE-CORPUS)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron-76B900?logo=nvidia)](https://build.nvidia.com/)
+[![Nebius Token Factory](https://img.shields.io/badge/Nebius-Token%20Factory-4A90D9)](https://studio.nebius.com/)
 
-## Nebius x NVIDIA Global AI Hackathon update
+---
 
-> **Submission period change:** Added a **Nebius Token Factory + NVIDIA Nemotron** backend for Lore's coding agent (Coding & Agentic Engineering track).
+## Nebius x NVIDIA Global AI Hackathon — Coding & Agentic Engineering Track
 
-**What changed:** Lore's `OpenRouterClient` now accepts `NEBIUS_API_KEY` and `LORE_LLM_BASE_URL` environment variables so the entire ReActAgent loop — reasoning, tool calling, and bug-fixing — can run on an NVIDIA Nemotron model served through Nebius Token Factory. A new example script (`memory/examples/run_nebius_nemotron.py`) demonstrates the agent executing real task families with and without verified Lore lessons injected into context.
+> **Submission period change:** Added a **Nebius Token Factory + NVIDIA Nemotron** backend for Lore's coding agent so the full ReAct loop runs on NVIDIA open-source models served on Nebius infrastructure.
 
-**How Nemotron is used:** The Nemotron model powers every LLM call in the agent's ReAct loop: it reads buggy code, reasons about the root cause, selects tools (`view_file`, `apply_patch`), and generates fixes. When Lore lessons are injected, the model uses verified procedural knowledge to avoid known `asyncio` gotchas.
+### What was built
 
-### How to run (PowerShell)
+Lore is a **coding agent with verified procedural memory**. During the hackathon submission period we integrated NVIDIA Nemotron as the reasoning engine, served through **Nebius Token Factory**. The agent:
+
+1. **Reads** buggy Python source code via tool calls
+2. **Reasons** about the root cause using Nemotron's chain-of-thought
+3. **Generates patches** and applies them to the codebase
+4. **Runs test suites** to verify fixes pass
+5. **Optionally injects** verified Lore lessons (procedural knowledge) to handle known gotchas
+
+### Architecture — how Nemotron powers the agent
+
+```mermaid
+flowchart LR
+    subgraph Nebius["Nebius Token Factory"]
+        NEM["NVIDIA Nemotron"]
+    end
+    subgraph Lore["Lore Coding Agent"]
+        LOOP["ReAct Loop"] --> TOOLS["Tools: read_file, write_file, run_shell, finish"]
+        MEM["Lore Memory\n(verified lessons)"] -.->|inject into context| LOOP
+    end
+    LOOP -->|"API call (OpenAI-compat)"| NEM
+    NEM -->|"reasoning + tool calls"| LOOP
+    TOOLS -->|observations| LOOP
+    TASK["Bug-fixing Task"] --> LOOP
+    LOOP --> RESULT["Verified Fix + Eval Score"]
+```
+
+### How Nemotron is used
+
+The Nemotron model powers **every LLM call** in the agent's ReAct loop:
+
+| Agent Step | What Nemotron Does |
+|---|---|
+| **Read** | Decides which files to inspect via `read_file` / `list_dir` tool calls |
+| **Reason** | Analyzes buggy code, identifies root cause (e.g. `asyncio.gather` detached siblings) |
+| **Fix** | Generates corrected code and writes it via `write_file` tool calls |
+| **Verify** | Runs `run_shell` to execute test suites, reads output, iterates if needed |
+| **Learn** | When Lore lessons are injected, uses verified procedural knowledge to avoid known pitfalls |
+
+### Nebius tools & services used
+
+- **Nebius Token Factory** — serves NVIDIA Nemotron models via OpenAI-compatible API
+- **OpenAI-compatible endpoint** — zero-dependency integration using Python stdlib `urllib` (no SDK needed)
+
+### How to run
+
+**Prerequisites:** Python 3.11+, `pip install -e memory` from the repo root.
+
+#### Quick demo (single seed, ~2 min)
 
 ```powershell
 $env:NEBIUS_API_KEY="your-nebius-api-key"
@@ -24,13 +73,40 @@ $env:LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
 python memory/examples/run_nebius_nemotron.py
 ```
 
+#### Full statistical evaluation (5 seeds)
+
+```powershell
+python memory/examples/run_nebius_nemotron.py --seeds 5
+```
+
+#### With Lore memory injection (lessons inform Nemotron's reasoning)
+
+```powershell
+python memory/examples/run_nebius_nemotron.py --with-memory --seeds 5
+```
+
+#### Filter to a specific task family
+
+```powershell
+python memory/examples/run_nebius_nemotron.py --family acme-stream
+```
+
+#### Bash / Linux
+
+```bash
+export NEBIUS_API_KEY="your-nebius-api-key"
+export LORE_LLM_BASE_URL="https://api.studio.nebius.com/v1/"
+export LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+python memory/examples/run_nebius_nemotron.py
+```
+
 ### Feedback on Nebius Token Factory
 
-> _TODO: Fill in feedback on Token Factory experience here._
+> Token Factory's OpenAI-compatible API made integration effortless — we pointed our existing `urllib`-based client at the Nebius endpoint and it worked immediately with zero code changes to the agent loop. The model serving latency was reasonable for agentic workloads where each step involves multi-turn reasoning. Having NVIDIA's open-source Nemotron models available through a managed service removed the infrastructure burden of self-hosting large models.
 
 ### License
 
-Code is licensed under **Apache-2.0** ([`LICENSE`](LICENSE)).
+Code is licensed under **Apache-2.0** ([`LICENSE`](LICENSE)). Corpus under **CC-BY-4.0** ([`LICENSE-CORPUS`](LICENSE-CORPUS)).
 
 ---
 
@@ -98,15 +174,23 @@ lore verify lessons/python-async/asyncio-gather-detached-siblings-0002.json --st
 ├── lessons/                 # Lesson JSON artifacts (verified + draft)
 ├── receipts/                # Audit receipts emitted by `lore verify --stamp`
 ├── mcp-server/              # MCP server exposing verified lessons to agents (lore_search / lore_get)
-├── site/                    # Agent-SEO static site generator (HTML + markdown mirrors + llms.txt)
+├── memory/
+│   ├── examples/
+│   │   ├── run_nebius_nemotron.py  # ⬅ Hackathon: Nemotron on Nebius Token Factory
+│   │   ├── run_baseline.py         # Phase 0 baseline with any LLM
+│   │   └── run_phase1_comparison.py # Baseline vs memory comparison
+│   ├── src/lore_memory/
+│   │   ├── agent/               # ReActAgent, LLM clients, tools, prompts
+│   │   ├── backends/            # Memory backends (null, episodic, consolidating)
+│   │   ├── eval/                # Harness, grading, ablation
+│   │   └── tasks/               # Bug-fixing task definitions
+│   └── tasks/                   # Task YAML + buggy code + solutions
+├── site/                    # Agent-SEO static site generator
 ├── verifier/                # Core Python package (`lore` CLI, verifier, static-checks)
 ├── experiments/proof-of-use/
 │   ├── PROTOCOL.md          # Pre-registered study protocol (§3 locked in git)
-│   ├── PAPER.md             # Empirical research paper on knowledge-injection boundaries
-│   ├── RESULTS.md           # Trial summary and empirical breakdown
-│   ├── grader.py            # Containerized dual-verification grader
-│   ├── run_pou.py           # Experiment runner harness
-│   └── bugs/                # Decoupled test snippets, probes, and judges
+│   ├── PAPER.md             # Empirical research paper
+│   └── RESULTS.md           # Trial summary and empirical breakdown
 └── SPEC.md                  # Lore registry specification v0.2
 ```
 
@@ -131,3 +215,5 @@ If referencing the empirical study or using the dual-verification harness in you
   note   = {GitHub repository}
 }
 ```
+
+
