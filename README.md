@@ -69,7 +69,7 @@ The Nemotron model powers **every LLM call** in the agent's ReAct loop:
 ```powershell
 $env:NEBIUS_API_KEY="your-nebius-api-key"
 $env:LORE_LLM_BASE_URL="https://api.studio.nebius.com/v1/"
-$env:LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+$env:LORE_MODEL="<Nemotron model ID from Nebius catalog>"
 python memory/examples/run_nebius_nemotron.py
 ```
 
@@ -96,13 +96,13 @@ python memory/examples/run_nebius_nemotron.py --family acme-stream
 ```bash
 export NEBIUS_API_KEY="your-nebius-api-key"
 export LORE_LLM_BASE_URL="https://api.studio.nebius.com/v1/"
-export LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+export LORE_MODEL="<Nemotron model ID from Nebius catalog>"
 python memory/examples/run_nebius_nemotron.py
 ```
 
 ### Feedback on Nebius Token Factory
 
-> Token Factory's OpenAI-compatible API made integration effortless — we pointed our existing `urllib`-based client at the Nebius endpoint and it worked immediately with zero code changes to the agent loop. The model serving latency was reasonable for agentic workloads where each step involves multi-turn reasoning. Having NVIDIA's open-source Nemotron models available through a managed service removed the infrastructure burden of self-hosting large models.
+> I couldn't activate Token Factory: card verification failed and no other payment method (UPI, etc.) was offered for India. The integration code is ready but untested on Nebius.
 
 ### License
 

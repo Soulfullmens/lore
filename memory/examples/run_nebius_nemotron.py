@@ -12,7 +12,7 @@ Demonstrates Nemotron powering a real coding agent that:
 Usage (PowerShell):
     $env:NEBIUS_API_KEY="..."
     $env:LORE_LLM_BASE_URL="https://api.studio.nebius.com/v1/"
-    $env:LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+    $env:LORE_MODEL="<Nemotron model ID from Nebius catalog>"
     python memory/examples/run_nebius_nemotron.py
     python memory/examples/run_nebius_nemotron.py --with-memory   # adds lesson injection
     python memory/examples/run_nebius_nemotron.py --seeds 5       # multi-seed evaluation
@@ -71,7 +71,7 @@ def main() -> None:
     model = os.environ.get("LORE_MODEL")
     if not model:
         print("ERROR: Set LORE_MODEL to the Nemotron model ID on Nebius Token Factory.")
-        print('  Example: $env:LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"')
+        print('  Example: $env:LORE_MODEL="<Nemotron model ID from Nebius catalog>"')
         sys.exit(1)
 
     base_url = os.environ.get("LORE_LLM_BASE_URL", "https://api.studio.nebius.com/v1/")
