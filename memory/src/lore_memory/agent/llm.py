@@ -99,7 +99,7 @@ class OpenRouterClient:
         model: str = "openai/gpt-4o-mini",
         *,
         api_key: str | None = None,
-        base_url: str = "https://openrouter.ai/api/v1",
+        base_url: str = os.environ.get("LORE_LLM_BASE_URL", "https://openrouter.ai/api/v1"),
         timeout: float = 60.0,
         max_tokens: int = 4096,
     ) -> None:
@@ -110,10 +110,10 @@ class OpenRouterClient:
         self.max_tokens = max_tokens
 
     def _get_api_key(self) -> str:
-        key = self.api_key or os.environ.get("OPENROUTER_API_KEY")
+        key = self.api_key or os.environ.get("NEBIUS_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
         if not key:
             raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Set the environment variable or pass api_key."
+                "NEBIUS_API_KEY / OPENROUTER_API_KEY is not set. Set the environment variable or pass api_key."
             )
         return key
 

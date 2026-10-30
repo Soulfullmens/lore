@@ -7,6 +7,33 @@
 [![Code License: Apache-2.0](https://img.shields.io/badge/Code-Apache_2.0-blue.svg)](LICENSE)
 [![Corpus License: CC-BY-4.0](https://img.shields.io/badge/Corpus-CC--BY--4.0-lightgrey.svg)](LICENSE-CORPUS)
 
+## Nebius x NVIDIA Global AI Hackathon update
+
+> **Submission period change:** Added a **Nebius Token Factory + NVIDIA Nemotron** backend for Lore's coding agent (Coding & Agentic Engineering track).
+
+**What changed:** Lore's `OpenRouterClient` now accepts `NEBIUS_API_KEY` and `LORE_LLM_BASE_URL` environment variables so the entire ReActAgent loop — reasoning, tool calling, and bug-fixing — can run on an NVIDIA Nemotron model served through Nebius Token Factory. A new example script (`memory/examples/run_nebius_nemotron.py`) demonstrates the agent executing real task families with and without verified Lore lessons injected into context.
+
+**How Nemotron is used:** The Nemotron model powers every LLM call in the agent's ReAct loop: it reads buggy code, reasons about the root cause, selects tools (`view_file`, `apply_patch`), and generates fixes. When Lore lessons are injected, the model uses verified procedural knowledge to avoid known `asyncio` gotchas.
+
+### How to run (PowerShell)
+
+```powershell
+$env:NEBIUS_API_KEY="your-nebius-api-key"
+$env:LORE_LLM_BASE_URL="https://api.studio.nebius.com/v1/"
+$env:LORE_MODEL="nvidia/llama-3.1-nemotron-ultra-253b-v1"
+python memory/examples/run_nebius_nemotron.py
+```
+
+### Feedback on Nebius Token Factory
+
+> _TODO: Fill in feedback on Token Factory experience here._
+
+### License
+
+Code is licensed under **Apache-2.0** ([`LICENSE`](LICENSE)).
+
+---
+
 **Lore** is a research corpus of container-verified procedural knowledge ("lessons") with attached executable evals, paired with a pre-registered empirical study investigating the limits of in-context knowledge injection vs parametric memory in AI coding agents.
 
 > 📄 **Featured Research Paper:** Read the full pre-registered empirical paper in [`experiments/proof-of-use/PAPER.md`](experiments/proof-of-use/PAPER.md) and the acceptance bar for lessons in [`QUALITY_BAR.md`](QUALITY_BAR.md).
